@@ -26,7 +26,7 @@
                 <div id="gps-box" class="hidden bg-slate-900 text-white p-5 rounded-3xl text-center shadow-inner border-2 border-yellow-400/30">
                     <div class="text-[9px] text-yellow-400 font-bold uppercase mb-1 tracking-widest">Code Géographique Unique</div>
                     <div id="plus-code" class="text-3xl font-mono font-black text-white">----</div>
-                    <div id="accuracy" class="text-[10px] text-slate-400 mt-1 italic"></div>
+                    <div id="accuracy" class="text-[10px] font-bold mt-1 italic text-red-400">Recherche du signal...</div>
                 </div>
 
                 <button onclick="getLocation()" id="btn-gps" class="w-full bg-slate-100 text-slate-900 font-bold py-4 rounded-2xl border-2 border-slate-200 active:scale-95 transition-all">
@@ -40,64 +40,79 @@
                     <input type="tel" id="tel" placeholder="Numéro de Téléphone" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-green-500 outline-none transition-all">
                 </div>
 
-                <button onclick="sendToSupabase()" id="btn-send" class="w-full bg-[#009460] hover:bg-green-700 text-white font-black py-5 rounded-[2rem] shadow-xl mt-4 active:scale-95 transition-all">
-                    ENREGISTRER À L'ÉTAT CIVIL
+                <button onclick="sendToSupabase()" id="btn-send" class="w-full bg-[#009460] opacity-50 text-white font-black py-5 rounded-[2rem] shadow-xl mt-4 transition-all" disabled>
+                    ATTENTE DU GPS...
                 </button>
             </div>
 
             <div id="success" class="hidden py-10 text-center">
                 <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-4">✓</div>
                 <h3 class="text-2xl font-black text-slate-900 leading-tight">VOTRE ADRESSE<br>EST ENREGISTRÉE</h3>
-                <p class="text-sm text-slate-500 mt-3 px-4">Les données ont été transmises avec succès au serveur central de la République.</p>
+                <p class="text-sm text-slate-500 mt-3 px-4">Données transmises avec succès.</p>
                 <button onclick="location.reload()" class="mt-8 text-blue-600 font-bold text-sm underline decoration-2">Nouvel Enregistrement</button>
             </div>
         </div>
     </div>
 
     <script>
-        // CONFIGURATION SUPABASE (Tes clés réelles)
         const SUPABASE_URL = "https://mxgdthpexmszutqhoawb.supabase.co";
         const SUPABASE_KEY = "sb_publishable_5Zxd2bCkRABYyBubCNXpdQ_jwZol9Rc";
         const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         const olc = new OpenLocationCode();
         let codeFinal = "";
+        let watchId = null;
 
-        // Fonction pour capter le GPS
         function getLocation() {
             const btn = document.getElementById('btn-gps');
-            btn.innerText = "🛰️ Recherche Satellite...";
+            const accText = document.getElementById('accuracy');
+            const sendBtn = document.getElementById('btn-send');
             
-            navigator.geolocation.getCurrentPosition((pos) => {
+            btn.innerText = "🛰️ Affinage en cours...";
+            document.getElementById('gps-box').classList.remove('hidden');
+
+            const options = { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 };
+
+            // On utilise watchPosition au lieu de getCurrentPosition pour une précision maximale
+            watchId = navigator.geolocation.watchPosition((pos) => {
+                const acc = Math.round(pos.coords.accuracy);
                 codeFinal = olc.encode(pos.coords.latitude, pos.coords.longitude, 10);
+                
                 document.getElementById('plus-code').innerText = codeFinal;
-                document.getElementById('accuracy').innerText = `Précision : +/- ${Math.round(pos.coords.accuracy)}m`;
-                document.getElementById('gps-box').classList.remove('hidden');
-                btn.innerText = "Position Verrouillée ✅";
-                btn.classList.replace('bg-slate-100', 'bg-blue-50');
+                accText.innerText = `Précision : +/- ${acc}m`;
+
+                // Si la précision est bonne (moins de 25m)
+                if (acc < 25) {
+                    accText.classList.replace('text-red-400', 'text-green-500');
+                    btn.innerText = "Position Verrouillée ✅";
+                    btn.classList.replace('bg-slate-100', 'bg-green-50');
+                    sendBtn.disabled = false;
+                    sendBtn.classList.replace('opacity-50', 'opacity-100');
+                    sendBtn.innerText = "ENREGISTRER À L'ÉTAT CIVIL";
+                } else {
+                    accText.classList.add('text-yellow-500');
+                    sendBtn.innerText = "SIGNAL TROP FAIBLE (" + acc + "m)...";
+                }
             }, (err) => {
-                alert("Erreur : Activez votre GPS et autorisez l'accès.");
-                btn.innerText = "Réessayer";
-            }, {enableHighAccuracy: true});
+                alert("Erreur GPS : Merci d'autoriser l'accès et de sortir dehors.");
+            }, options);
         }
 
-        // Fonction pour envoyer à ta base de données Supabase
         async function sendToSupabase() {
             const nom_val = document.getElementById('nom').value;
             const quartier_val = document.getElementById('quartier').value;
             const tel_val = document.getElementById('tel').value;
 
             if(!nom_val || !codeFinal) {
-                alert("Veuillez remplir votre nom et capturer votre position GPS.");
+                alert("Remplissez le nom et attendez le GPS.");
                 return;
             }
 
             const btnSend = document.getElementById('btn-send');
-            btnSend.innerText = "Transmission en cours...";
+            btnSend.innerText = "Transmission...";
             btnSend.disabled = true;
 
-            // ENVOI RÉEL VERS LA TABLE 'recensement'
-            const { data, error } = await _supabase
+            const { error } = await _supabase
                 .from('recensement')
                 .insert([{ 
                     nom: nom_val, 
@@ -107,12 +122,10 @@
                 }]);
 
             if (error) {
-                console.error("Erreur détectée :", error);
-                alert("Erreur de connexion : " + error.message);
-                btnSend.innerText = "Réessayer";
+                alert("Erreur : " + error.message);
                 btnSend.disabled = false;
             } else {
-                // Succès ! On affiche l'écran de confirmation
+                if(watchId) navigator.geolocation.clearWatch(watchId);
                 document.getElementById('main-interface').classList.add('hidden');
                 document.getElementById('success').classList.remove('hidden');
             }
@@ -120,3 +133,4 @@
     </script>
 </body>
 </html>
+
