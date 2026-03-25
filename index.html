@@ -3,120 +3,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GN-ADRESSE | Système Officiel Connecté</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/open-location-code@1.0.3/openlocationcode.min.js"></script>
+    <title>Sénéfounyi - Adressage National</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/openlocationcode@1.0.4/lib/openlocationcode.min.js"></script>
+    <style>
+        :root { --gn-red: #CE1126; --gn-yellow: #FCD116; --gn-green: #009460; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f4f4; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 400px; border-top: 8px solid var(--gn-red); }
+        h2 { color: #333; text-align: center; margin-bottom: 5px; }
+        p.subtitle { text-align: center; color: #666; font-size: 0.9em; margin-bottom: 25px; }
+        .flag-line { height: 4px; display: flex; margin-bottom: 20px; }
+        .f-r { flex: 1; background: var(--gn-red); } .f-y { flex: 1; background: var(--gn-yellow); } .f-g { flex: 1; background: var(--gn-green); }
+        label { display: block; margin: 15px 0 5px; font-weight: bold; color: #444; }
+        input { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        .gps-box { background: #f9f9f9; padding: 15px; border-radius: 8px; border: 1px dashed #ccc; text-align: center; margin-top: 10px; }
+        #precision-ui { font-size: 0.8em; font-weight: bold; margin-top: 5px; }
+        .btn-gps { background: #333; color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; transition: 0.3s; }
+        .btn-save { background: var(--gn-green); color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: not-allowed; font-size: 18px; font-weight: bold; margin-top: 25px; opacity: 0.5; }
+        .status-ready { opacity: 1; cursor: pointer; }
+    </style>
 </head>
-<body class="bg-slate-900 min-h-screen p-4 flex flex-col items-center font-sans">
+<body>
 
-    <div class="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl overflow-hidden mt-2 border-4 border-slate-800">
-        <div class="h-2 w-full bg-gradient-to-r from-[#CE1126] via-[#FCD116] to-[#009460]"></div>
-        
-        <div class="p-6">
-            <div class="flex justify-between items-center mb-6">
-                <div>
-                    <h1 class="text-2xl font-black text-slate-900 leading-none">GN-ADRESSE</h1>
-                    <p class="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest text-green-600">Base de Données Nationale</p>
-                </div>
-                <div class="text-2xl">🇬🇳</div>
-            </div>
+<div class="card">
+    <div class="flag-line"><div class="f-r"></div><div class="f-y"></div><div class="f-g"></div></div>
+    <h2>Sénéfounyi 🇬🇳</h2>
+    <p class="subtitle">Enregistrement d'adresse numérique</p>
 
-            <div id="main-interface" class="space-y-4">
-                <div id="gps-box" class="hidden bg-slate-900 text-white p-5 rounded-3xl text-center shadow-inner border-2 border-yellow-400/30">
-                    <div class="text-[9px] text-yellow-400 font-bold uppercase mb-1 tracking-widest">Code Géographique Unique</div>
-                    <div id="plus-code" class="text-3xl font-mono font-black text-white">----</div>
-                    <div id="accuracy" class="text-[10px] text-slate-400 mt-1 italic"></div>
-                </div>
+    <label>Nom complet du propriétaire</label>
+    <input type="text" id="nom" placeholder="Ex: Mamadou Diallo">
 
-                <button onclick="getLocation()" id="btn-gps" class="w-full bg-slate-100 text-slate-900 font-bold py-4 rounded-2xl border-2 border-slate-200 active:scale-95 transition-all">
-                    📍 Capturer ma Position GPS
-                </button>
+    <label>Quartier / Commune</label>
+    <input type="text" id="quartier" placeholder="Ex: Matoto / Conakry">
 
-                <div class="pt-2 space-y-3">
-                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Identité du Résident</label>
-                    <input type="text" id="nom" placeholder="Nom Complet (ex: Mamadou Sylla)" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-green-500 outline-none transition-all">
-                    <input type="text" id="quartier" placeholder="Quartier (ex: Ratoma)" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-green-500 outline-none transition-all">
-                    <input type="tel" id="tel" placeholder="Numéro de Téléphone" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-green-500 outline-none transition-all">
-                </div>
+    <label>Numéro de téléphone</label>
+    <input type="tel" id="tel" placeholder="+224 6XX XX XX XX">
 
-                <button onclick="sendToSupabase()" id="btn-send" class="w-full bg-[#009460] hover:bg-green-700 text-white font-black py-5 rounded-[2rem] shadow-xl mt-4 active:scale-95 transition-all">
-                    ENREGISTRER À L'ÉTAT CIVIL
-                </button>
-            </div>
-
-            <div id="success" class="hidden py-10 text-center">
-                <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-4">✓</div>
-                <h3 class="text-2xl font-black text-slate-900 leading-tight">VOTRE ADRESSE<br>EST ENREGISTRÉE</h3>
-                <p class="text-sm text-slate-500 mt-3 px-4">Les données ont été transmises avec succès au serveur central de la République.</p>
-                <button onclick="location.reload()" class="mt-8 text-blue-600 font-bold text-sm underline decoration-2">Nouvel Enregistrement</button>
-            </div>
-        </div>
+    <div class="gps-box">
+        <button class="btn-gps" id="btn-gps" onclick="startGPS()">ACTIVER MON GPS</button>
+        <p id="plus-code" style="font-weight:bold; color:var(--gn-red); margin-top:10px;">En attente du signal...</p>
+        <div id="precision-ui">Précision : --</div>
     </div>
 
-    <script>
-        // CONFIGURATION SUPABASE (Tes clés réelles)
-        const SUPABASE_URL = "https://mxgdthpexmszutqhoawb.supabase.co";
-        const SUPABASE_KEY = "sb_publishable_5Zxd2bCkRABYyBubCNXpdQ_jwZol9Rc";
-        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    <button class="btn-save" id="btn-save" onclick="saveData()" disabled>ENREGISTRER MA MAISON</button>
+</div>
 
-        const olc = new OpenLocationCode();
-        let codeFinal = "";
+<script>
+    // --- CONFIGURATION SUPABASE ---
+    const _URL = "TA_URL_SUPABASE"; 
+    const _KEY = "TA_CLE_ANON_SUPABASE";
+    const supabase = lib.createClient(_URL, _KEY);
 
-        // Fonction pour capter le GPS
-        function getLocation() {
-            const btn = document.getElementById('btn-gps');
-            btn.innerText = "🛰️ Recherche Satellite...";
+    let finalCoords = { lat: null, lng: null };
+    let watchId = null;
+
+    function startGPS() {
+        const btnGps = document.getElementById('btn-gps');
+        const precisionUi = document.getElementById('precision-ui');
+        const saveBtn = document.getElementById('btn-save');
+
+        btnGps.innerHTML = "Recherche satellites...";
+        
+        // Options Haute Précision
+        const options = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
+
+        watchId = navigator.geolocation.watchPosition((pos) => {
+            const acc = pos.coords.accuracy;
+            finalCoords.lat = pos.coords.latitude;
+            finalCoords.lng = pos.coords.longitude;
+
+            // Calcul du Plus Code
+            const code = OpenLocationCode.encode(finalCoords.lat, finalCoords.lng, 11);
+            document.getElementById('plus-code').innerHTML = "CODE : " + code;
+
+            // UI de précision
+            precisionUi.innerHTML = `Précision : +/- ${Math.round(acc)} mètres`;
             
-            navigator.geolocation.getCurrentPosition((pos) => {
-                codeFinal = olc.encode(pos.coords.latitude, pos.coords.longitude, 10);
-                document.getElementById('plus-code').innerText = codeFinal;
-                document.getElementById('accuracy').innerText = `Précision : +/- ${Math.round(pos.coords.accuracy)}m`;
-                document.getElementById('gps-box').classList.remove('hidden');
-                btn.innerText = "Position Verrouillée ✅";
-                btn.classList.replace('bg-slate-100', 'bg-blue-50');
-            }, (err) => {
-                alert("Erreur : Activez votre GPS et autorisez l'accès.");
-                btn.innerText = "Réessayer";
-            }, {enableHighAccuracy: true});
-        }
-
-        // Fonction pour envoyer à ta base de données Supabase
-        async function sendToSupabase() {
-            const nom_val = document.getElementById('nom').value;
-            const quartier_val = document.getElementById('quartier').value;
-            const tel_val = document.getElementById('tel').value;
-
-            if(!nom_val || !codeFinal) {
-                alert("Veuillez remplir votre nom et capturer votre position GPS.");
-                return;
-            }
-
-            const btnSend = document.getElementById('btn-send');
-            btnSend.innerText = "Transmission en cours...";
-            btnSend.disabled = true;
-
-            // ENVOI RÉEL VERS LA TABLE 'recensement'
-            const { data, error } = await _supabase
-                .from('recensement')
-                .insert([{ 
-                    nom: nom_val, 
-                    telephone: tel_val, 
-                    plus_code: codeFinal, 
-                    quartier: quartier_val 
-                }]);
-
-            if (error) {
-                console.error("Erreur détectée :", error);
-                alert("Erreur de connexion : " + error.message);
-                btnSend.innerText = "Réessayer";
-                btnSend.disabled = false;
+            if(acc <= 15) { // Si précision meilleure que 15m
+                precisionUi.style.color = "green";
+                saveBtn.disabled = false;
+                saveBtn.classList.add('status-ready');
+                btnGps.style.background = "#009460";
+                btnGps.innerHTML = "GPS FIXÉ ✅";
             } else {
-                // Succès ! On affiche l'écran de confirmation
-                document.getElementById('main-interface').classList.add('hidden');
-                document.getElementById('success').classList.remove('hidden');
+                precisionUi.style.color = "orange";
+                saveBtn.disabled = true;
+                saveBtn.classList.remove('status-ready');
             }
+        }, (err) => {
+            alert("Erreur GPS : Activez la localisation haute précision.");
+        }, options);
+    }
+
+    async function saveData() {
+        const n = document.getElementById('nom').value;
+        const q = document.getElementById('quartier').value;
+        const t = document.getElementById('tel').value;
+        const pc = document.getElementById('plus-code').innerText;
+
+        if(!n || !q || !t) return alert("Remplis tous les champs !");
+
+        const { data, error } = await supabase
+            .from('recensement')
+            .insert([{ 
+                nom: n, 
+                quartier: q, 
+                telephone: t, 
+                plus_code: pc,
+                latitude: finalCoords.lat,
+                longitude: finalCoords.lng
+            }]);
+
+        if (error) {
+            alert("Erreur : " + error.message);
+        } else {
+            alert("Félicitations ! Votre maison est officiellement enregistrée. 🇬🇳");
+            if(watchId) navigator.geolocation.clearWatch(watchId);
+            location.reload();
         }
-    </script>
+    }
+</script>
+
 </body>
 </html>
