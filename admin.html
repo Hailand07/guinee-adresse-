@@ -59,18 +59,36 @@
             data.forEach(item => {
                 const card = document.createElement('div');
                 card.className = "bg-white p-5 rounded-2xl shadow-sm border-l-4 border-green-500 flex justify-between items-center";
+                card.innerHTML = 
+                                data.forEach(item => {
+                // On crée un lien direct vers les coordonnées GPS pour plus de précision
+                // Si tu n'as pas stocké lat/lon séparément, on utilise le Plus Code avec "Guinea" pour éviter la France
+                const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.plus_code + " Guinea")}`;
+                const itineraryUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.plus_code + " Guinea")}`;
+
+                const card = document.createElement('div');
+                card.className = "bg-white p-5 rounded-2xl shadow-sm border-l-4 border-green-500 mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4";
                 card.innerHTML = `
-                    <div>
-                        <h3 class="font-bold text-slate-900">${item.nom}</h3>
-                        <p class="text-sm text-slate-500">${item.quartier} | ${item.telephone}</p>
-                        <p class="text-[10px] font-mono text-blue-600 mt-1">${item.plus_code}</p>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-slate-900 text-lg">${item.nom}</h3>
+                        <p class="text-sm text-slate-600 font-medium">${item.quartier} • <span class="text-green-600">${item.telephone}</span></p>
+                        <div class="mt-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
+                           <p class="text-[11px] font-mono text-blue-600 uppercase tracking-tight">Code : ${item.plus_code}</p>
+                        </div>
                     </div>
-                    <a href="https://www.google.com/maps/search/?api=1&query=${item.plus_code}" target="_blank" class="bg-slate-100 p-3 rounded-xl hover:bg-slate-200">
-                        📍 Voir
-                    </a>
+                    <div class="flex gap-2 w-full md:w-auto">
+                        <a href="${googleMapsUrl}" target="_blank" class="flex-1 md:flex-none text-center bg-slate-900 text-white px-4 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+                            📍 Voir
+                        </a>
+                        <a href="${itineraryUrl}" target="_blank" class="flex-1 md:flex-none text-center bg-blue-600 text-white px-4 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+                            🚗 Itinéraire
+                        </a>
+                    </div>
                 `;
                 container.appendChild(card);
             });
+
+                
         }
     </script>
 </body>
