@@ -17,12 +17,12 @@
 
     <div id="admin-content" class="hidden max-w-4xl mx-auto">
         <div class="flex justify-between items-center mb-6">
-            <h1 class="text-2xl font-black text-slate-900">LISTE DES RÉSIDENTS</h1>
-            <button onclick="location.reload()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">Actualiser</button>
+            <h1 class="text-2xl font-black text-slate-900 uppercase">Liste des Résidents</h1>
+            <button onclick="location.reload()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Actualiser</button>
         </div>
 
         <div id="data-list" class="space-y-4">
-            <p class="text-center text-slate-400">Chargement des données...</p>
+            <p class="text-center text-slate-400 font-medium">Chargement des données...</p>
         </div>
     </div>
 
@@ -33,7 +33,7 @@
 
         function checkPass() {
             const pass = document.getElementById('admin-pass').value;
-            if(pass === "22400") { // TON CODE D'ACCÈS
+            if(pass === "22400") {
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('admin-content').classList.remove('hidden');
                 loadData();
@@ -52,19 +52,20 @@
             container.innerHTML = "";
 
             if (error) {
-                container.innerHTML = "Erreur : " + error.message;
+                container.innerHTML = "<p class='text-red-500 text-center'>Erreur : " + error.message + "</p>";
+                return;
+            }
+
+            if (data.length === 0) {
+                container.innerHTML = "<p class='text-center text-slate-500'>Aucun enregistrement trouvé.</p>";
                 return;
             }
 
             data.forEach(item => {
-                const card = document.createElement('div');
-                card.className = "bg-white p-5 rounded-2xl shadow-sm border-l-4 border-green-500 flex justify-between items-center";
-                card.innerHTML = 
-                                data.forEach(item => {
-                // On crée un lien direct vers les coordonnées GPS pour plus de précision
-                // Si tu n'as pas stocké lat/lon séparément, on utilise le Plus Code avec "Guinea" pour éviter la France
-                const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.plus_code + " Guinea")}`;
-                const itineraryUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.plus_code + " Guinea")}`;
+                // Liens Google Maps avec "Guinea" pour éviter la France
+                const query = encodeURIComponent(item.plus_code + " Guinea");
+                const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${query}`;
+                const itineraryUrl = `https://www.google.com/maps/dir/?api=1&destination=${query}`;
 
                 const card = document.createElement('div');
                 card.className = "bg-white p-5 rounded-2xl shadow-sm border-l-4 border-green-500 mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4";
@@ -87,8 +88,6 @@
                 `;
                 container.appendChild(card);
             });
-
-                
         }
     </script>
 </body>
