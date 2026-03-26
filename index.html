@@ -3,129 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GN-ADRESSE | Système Officiel Connecté</title>
+    <title>GN-ADRESSE | Localisation Directe</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/open-location-code@1.0.3/openlocationcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="bg-slate-900 min-h-screen p-4 flex flex-col items-center font-sans">
+<body class="bg-slate-900 min-h-screen p-4 flex flex-col items-center">
 
     <div class="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl overflow-hidden mt-2 border-4 border-slate-800">
         <div class="h-2 w-full bg-gradient-to-r from-[#CE1126] via-[#FCD116] to-[#009460]"></div>
         
         <div class="p-6">
-            <div class="flex justify-between items-center mb-6">
-                <div>
-                    <h1 class="text-2xl font-black text-slate-900 leading-none">GN-ADRESSE</h1>
-                    <p class="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest text-green-600">Base de Données Nationale</p>
-                </div>
-                <div class="text-2xl">🇬🇳</div>
-            </div>
+            <h1 class="text-2xl font-black text-slate-900 leading-none mb-6">SÉNÉFOUNYI <span class="text-sm font-bold text-green-600 block">ADRESSAGE GPS DIRECT</span></h1>
 
             <div id="main-interface" class="space-y-4">
-                <div id="gps-box" class="hidden bg-slate-900 text-white p-5 rounded-3xl text-center shadow-inner border-2 border-yellow-400/30">
-                    <div class="text-[9px] text-yellow-400 font-bold uppercase mb-1 tracking-widest">Code Géographique Unique</div>
-                    <div id="plus-code" class="text-3xl font-mono font-black text-white">----</div>
-                    <div id="accuracy" class="text-[10px] font-bold mt-1 italic text-red-400">Recherche du signal...</div>
+                <div id="gps-status" class="bg-slate-100 p-5 rounded-3xl text-center border-2 border-dashed border-slate-300">
+                    <p id="coord-display" class="text-lg font-mono font-bold text-slate-400 italic">Position non capturée</p>
+                    <p id="accuracy-display" class="text-[10px] uppercase font-black text-slate-400 mt-1">Attente du signal...</p>
                 </div>
 
-                <button onclick="getLocation()" id="btn-gps" class="w-full bg-slate-100 text-slate-900 font-bold py-4 rounded-2xl border-2 border-slate-200 active:scale-95 transition-all">
-                    📍 Capturer ma Position GPS
+                <button onclick="startTracking()" id="btn-gps" class="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl active:scale-95 transition-all">
+                    📍 VERROUILLER MA POSITION
                 </button>
 
-                <div class="pt-2 space-y-3">
-                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Identité du Résident</label>
-                    <input type="text" id="nom" placeholder="Nom Complet (ex: Mamadou Sylla)" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-green-500 outline-none transition-all">
-                    <input type="text" id="quartier" placeholder="Quartier (ex: Ratoma)" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-green-500 outline-none transition-all">
-                    <input type="tel" id="tel" placeholder="Numéro de Téléphone" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-green-500 outline-none transition-all">
+                <div class="space-y-3">
+                    <input type="text" id="nom" placeholder="Nom du Propriétaire" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-green-500 outline-none">
+                    <input type="text" id="quartier" placeholder="Quartier / Commune" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-green-500 outline-none">
                 </div>
 
-                <button onclick="sendToSupabase()" id="btn-send" class="w-full bg-[#009460] opacity-50 text-white font-black py-5 rounded-[2rem] shadow-xl mt-4 transition-all" disabled>
-                    ATTENTE DU GPS...
+                <button onclick="saveToCloud()" id="btn-send" class="w-full bg-[#009460] opacity-50 text-white font-black py-5 rounded-[2rem] shadow-xl mt-4" disabled>
+                    ENREGISTRER LA MAISON
                 </button>
             </div>
 
             <div id="success" class="hidden py-10 text-center">
                 <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-4">✓</div>
-                <h3 class="text-2xl font-black text-slate-900 leading-tight">VOTRE ADRESSE<br>EST ENREGISTRÉE</h3>
-                <p class="text-sm text-slate-500 mt-3 px-4">Données transmises avec succès.</p>
-                <button onclick="location.reload()" class="mt-8 text-blue-600 font-bold text-sm underline decoration-2">Nouvel Enregistrement</button>
+                <h3 class="text-2xl font-black text-slate-900">ENREGISTRÉ !</h3>
+                <button onclick="location.reload()" class="mt-8 text-blue-600 font-bold underline">Nouvelle saisie</button>
             </div>
         </div>
     </div>
 
     <script>
-        const SUPABASE_URL = "https://mxgdthpexmszutqhoawb.supabase.co";
-        const SUPABASE_KEY = "sb_publishable_5Zxd2bCkRABYyBubCNXpdQ_jwZol9Rc";
-        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const _supabase = supabase.createClient("https://mxgdthpexmszutqhoawb.supabase.co", "sb_publishable_5Zxd2bCkRABYyBubCNXpdQ_jwZol9Rc");
+        let currentPos = { lat: null, lon: null };
 
-        const olc = new OpenLocationCode();
-        let codeFinal = "";
-        let watchId = null;
-
-        function getLocation() {
+        function startTracking() {
             const btn = document.getElementById('btn-gps');
-            const accText = document.getElementById('accuracy');
-            const sendBtn = document.getElementById('btn-send');
+            btn.innerText = "🛰️ Recherche Satellite...";
             
-            btn.innerText = "🛰️ Affinage en cours...";
-            document.getElementById('gps-box').classList.remove('hidden');
-
-            const options = { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 };
-
-            // On utilise watchPosition au lieu de getCurrentPosition pour une précision maximale
-            watchId = navigator.geolocation.watchPosition((pos) => {
+            navigator.geolocation.watchPosition((pos) => {
                 const acc = Math.round(pos.coords.accuracy);
-                codeFinal = olc.encode(pos.coords.latitude, pos.coords.longitude, 10);
-                
-                document.getElementById('plus-code').innerText = codeFinal;
-                accText.innerText = `Précision : +/- ${acc}m`;
+                currentPos.lat = pos.coords.latitude;
+                currentPos.lon = pos.coords.longitude;
 
-                // Si la précision est bonne (moins de 25m)
-                if (acc < 25) {
-                    accText.classList.replace('text-red-400', 'text-green-500');
-                    btn.innerText = "Position Verrouillée ✅";
-                    btn.classList.replace('bg-slate-100', 'bg-green-50');
-                    sendBtn.disabled = false;
-                    sendBtn.classList.replace('opacity-50', 'opacity-100');
-                    sendBtn.innerText = "ENREGISTRER À L'ÉTAT CIVIL";
-                } else {
-                    accText.classList.add('text-yellow-500');
-                    sendBtn.innerText = "SIGNAL TROP FAIBLE (" + acc + "m)...";
+                document.getElementById('coord-display').innerText = `${currentPos.lat.toFixed(5)}, ${currentPos.lon.toFixed(5)}`;
+                document.getElementById('accuracy-display').innerText = `Précision : +/- ${acc}m`;
+
+                if (acc < 30) {
+                    document.getElementById('gps-status').classList.replace('bg-slate-100', 'bg-green-50');
+                    document.getElementById('gps-status').classList.replace('border-slate-300', 'border-green-500');
+                    document.getElementById('coord-display').classList.remove('text-slate-400');
+                    document.getElementById('coord-display').classList.add('text-green-700');
+                    
+                    document.getElementById('btn-send').disabled = false;
+                    document.getElementById('btn-send').classList.remove('opacity-50');
+                    btn.innerText = "POSITION VERROUILLÉE ✅";
                 }
-            }, (err) => {
-                alert("Erreur GPS : Merci d'autoriser l'accès et de sortir dehors.");
-            }, options);
+            }, null, { enableHighAccuracy: true });
         }
 
-        async function sendToSupabase() {
-            const nom_val = document.getElementById('nom').value;
-            const quartier_val = document.getElementById('quartier').value;
-            const tel_val = document.getElementById('tel').value;
+        async function saveToCloud() {
+            const nom = document.getElementById('nom').value;
+            const quartier = document.getElementById('quartier').value;
 
-            if(!nom_val || !codeFinal) {
-                alert("Remplissez le nom et attendez le GPS.");
-                return;
-            }
+            if(!nom || !currentPos.lat) return alert("Position ou nom manquant");
 
-            const btnSend = document.getElementById('btn-send');
-            btnSend.innerText = "Transmission...";
-            btnSend.disabled = true;
+            const { error } = await _supabase.from('recensement').insert([{ 
+                nom, quartier, latitude: currentPos.lat, longitude: currentPos.lon 
+            }]);
 
-            const { error } = await _supabase
-                .from('recensement')
-                .insert([{ 
-                    nom: nom_val, 
-                    telephone: tel_val, 
-                    plus_code: codeFinal, 
-                    quartier: quartier_val 
-                }]);
-
-            if (error) {
-                alert("Erreur : " + error.message);
-                btnSend.disabled = false;
-            } else {
-                if(watchId) navigator.geolocation.clearWatch(watchId);
+            if (!error) {
                 document.getElementById('main-interface').classList.add('hidden');
                 document.getElementById('success').classList.remove('hidden');
             }
