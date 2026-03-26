@@ -6,10 +6,9 @@
     <title>SÉNÉFOUNYI | Carte Interactive</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://maps.googleapis.com/maps/api/js?v=3.exp"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?v=weekly"></script>
     <style>
-        #map { height: 100vh; width: 100%; }
-        
+        #map { height: 100vh; width: 100%; background-color: #e5e7eb; }
         .address-label {
             background-color: white;
             color: #0f172a;
@@ -19,79 +18,81 @@
             padding: 4px 8px;
             border-radius: 8px;
             border: 1px solid #cbd5e1;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
             white-space: nowrap;
             text-transform: uppercase;
         }
     </style>
 </head>
-<body class="bg-slate-100 min-h-screen">
+<body class="bg-slate-100">
+
+    <a href="index.html" class="fixed top-4 left-4 z-[1000] bg-white px-4 py-2 rounded-full shadow-lg text-xs font-black uppercase border-2 border-slate-900">
+        ← Retour
+    </a>
 
     <div id="map"></div>
 
     <script>
-        // Initialisation Supabase
         const _supabase = supabase.createClient("https://mxgdthpexmszutqhoawb.supabase.co", "sb_publishable_5Zxd2bCkRABYyBubCNXpdQ_jwZol9Rc");
 
         async function initMap() {
-            // Centre la carte sur Conakry
-            const conakryCenter = { lat: 9.6455, lng: -13.5784 };
+            try {
+                const conakryCenter = { lat: 9.6455, lng: -13.5784 };
 
-            const map = new google.maps.Map(document.getElementById("map"), {
-                zoom: 13,
-                center: conakryCenter,
-                disableDefaultUI: false,
-                zoomControl: true,
-            });
-
-            // Récupération des données
-            const { data, error } = await _supabase.from('recensement').select('*');
-
-            if (error) {
-                console.error("Erreur Supabase:", error);
-                return;
-            }
-
-            if (data) {
-                data.forEach(item => {
-                    if(item.latitude && item.longitude) {
-                        
-                        // Texte du label
-                        const labelText = `${item.nom || 'Sans Nom'} - ${item.quartier || 'Zone Inconnue'}`;
-
-                        // Création du marqueur
-                        const marker = new google.maps.Marker({
-                            position: { lat: parseFloat(item.latitude), lng: parseFloat(item.longitude) },
-                            map: map,
-                            title: item.nom,
-                            label: {
-                                text: labelText,
-                                className: 'address-label',
-                            }
-                        });
-
-                        // Contenu de la bulle d'info corrigé
-                        const infoContent = `
-                            <div style="padding:10px; font-family:sans-serif; text-align:center;">
-                                <h3 style="margin:0; font-weight:bold; text-transform:uppercase; color:#0f172a;">${item.nom || 'Anonyme'}</h3>
-                                <p style="margin:5px 0; font-size:11px; color:gray;">${item.quartier || 'Quartier inconnu'}</p>
-                                <a href="https://www.google.com/maps?q=${item.latitude},${item.longitude}" target="_blank" style="display:inline-block; background-color:#1d4ed8; color:white; font-size:10px; font-weight:bold; padding:6px 12px; text-decoration:none; border-radius:6px; margin-top:5px;">Y ALLER (GPS)</a>
-                            </div>
-                        `;
-
-                        const infoWindow = new google.maps.InfoWindow({
-                            content: infoContent
-                        });
-
-                        marker.addListener("click", () => {
-                            infoWindow.open(map, marker);
-                        });
-                    }
+                const map = new google.maps.Map(document.getElementById("map"), {
+                    zoom: 12,
+                    center: conakryCenter,
+                    mapTypeControl: false,
+                    streetViewControl: false,
+                    fullscreenControl: false
                 });
+
+                // Récupération des données
+                const { data, error } = await _supabase.from('recensement').select('*');
+
+                if (error) throw error;
+
+                if (data) {
+                    data.forEach(item => {
+                        if(item.latitude && item.longitude) {
+                            
+                            const lat = parseFloat(item.latitude);
+                            const lng = parseFloat(item.longitude);
+
+                            const marker = new google.maps.Marker({
+                                position: { lat: lat, lng: lng },
+                                map: map,
+                                label: {
+                                    text: `${item.nom || 'SANS NOM'}`,
+                                    className: 'address-label'
+                                }
+                            });
+
+                            const infoWindow = new google.maps.InfoWindow({
+                                content: `
+                                    <div style="padding:10px; text-align:center;">
+                                        <b style="text-transform:uppercase;">${item.nom}</b><br>
+                                        <small style="color:gray;">${item.quartier || ''}</small><br>
+                                        <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" 
+                                           target="_blank" 
+                                           style="display:inline-block; margin-top:8px; background:#000; color:#fff; padding:5px 10px; border-radius:5px; text-decoration:none; font-size:10px;">
+                                           OUVRIR DANS GPS
+                                        </a>
+                                    </div>`
+                            });
+
+                            marker.addListener("click", () => {
+                                infoWindow.open(map, marker);
+                            });
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error("Erreur d'initialisation:", err);
+                alert("Impossible de charger la carte ou les données.");
             }
         }
 
-        // Lancement au chargement de la page
         window.onload = initMap;
     </script>
 </body>
