@@ -3,74 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SÉNÉFOUNYI | Recensement</title>
+    <title>SÉNÉFOUNYI | Carte Interactive</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?v=weekly"></script>
+    <style>
+        #map { height: 100vh; width: 100%; background-color: #f1f5f9; }
+        .address-label {
+            background-color: white;
+            color: #0f172a;
+            font-family: sans-serif;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            white-space: nowrap;
+            text-transform: uppercase;
+        }
+    </style>
 </head>
-<body class="bg-slate-50 pb-24">
-    <div class="max-w-md mx-auto p-6">
-        <header class="mb-8">
-            <h1 class="text-3xl font-black text-slate-900">SÉNÉFOUNYI</h1>
-            <p class="text-xs font-bold text-orange-600 uppercase tracking-widest">Nouveau Recensement</p>
-        </header>
+<body class="bg-slate-100">
 
-        <div class="space-y-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-            <div>
-                <label class="text-[10px] font-black uppercase text-slate-400 ml-2">Nom Complet</label>
-                <input type="text" id="nom" placeholder="Ex: Mamadou Diallo" class="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-orange-500">
-            </div>
-            <div>
-                <label class="text-[10px] font-black uppercase text-slate-400 ml-2">Quartier</label>
-                <input type="text" id="quartier" placeholder="Ex: Kaloum" class="w-full p-4 bg-slate-50 rounded-2xl outline-none">
-            </div>
-            <button onclick="envoyerDonnees()" id="btn-submit" class="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-lg uppercase text-xs tracking-widest mt-4">
-                Enregistrer la position
-            </button>
-        </div>
+    <div class="fixed top-4 left-4 flex gap-2 z-[1000]">
+        <a href="index.html" class="bg-white px-4 py-2 rounded-xl shadow-lg text-[10px] font-black uppercase border-2 border-slate-900 hover:bg-slate-900 hover:text-white transition-all">
+            🏠 Saisir
+        </a>
+        <a href="admin.html" class="bg-white px-4 py-2 rounded-xl shadow-lg text-[10px] font-black uppercase border-2 border-slate-900 hover:bg-slate-900 hover:text-white transition-all">
+            🔐 Admin
+        </a>
     </div>
 
-    <div class="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-xs bg-slate-900/95 backdrop-blur-md p-3 rounded-2xl shadow-2xl flex justify-around items-center z-[5000]">
-        <a href="index.html" class="flex flex-col items-center">
-            <span class="text-xl">📝</span>
-            <span class="text-[9px] font-bold uppercase text-white">Saisir</span>
-        </a>
-        <a href="carte.html" class="flex flex-col items-center opacity-40 hover:opacity-100">
-            <span class="text-xl">📍</span>
-            <span class="text-[9px] font-bold uppercase text-white">Carte</span>
-        </a>
-        <a href="admin.html" class="flex flex-col items-center opacity-40 hover:opacity-100">
-            <span class="text-xl">🔐</span>
-            <span class="text-[9px] font-bold uppercase text-white">Admin</span>
-        </a>
-    </div>
+    <div id="map"></div>
 
     <script>
         const _supabase = supabase.createClient("https://mxgdthpexmszutqhoawb.supabase.co", "sb_publishable_5Zxd2bCkRABYyBubCNXpdQ_jwZol9Rc");
 
-        async function envoyerDonnees() {
-            const btn = document.getElementById('btn-submit');
-            btn.disabled = true;
-            btn.innerText = "LOCALISATION EN COURS...";
+        async function initMap() {
+            try {
+                const conakryCenter = { lat: 9.6455, lng: -13.5784 };
+                const map = new google.maps.Map(document.getElementById("map"), {
+                    zoom: 12,
+                    center: conakryCenter,
+                    mapTypeControl: false,
+                    fullscreenControl: false,
+                    streetViewControl: false
+                });
 
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                const { error } = await _supabase.from('recensement').insert([{
-                    nom: document.getElementById('nom').value,
-                    quartier: document.getElementById('quartier').value,
-                    latitude: pos.coords.latitude,
-                    longitude: pos.coords.longitude
-                }]);
+                const { data, error } = await _supabase.from('recensement').select('*');
+                if (error) throw error;
 
-                if (error) alert("Erreur");
-                else {
-                    alert("Succès !");
-                    location.reload();
+                if (data) {
+                    data.forEach(item => {
+                        if(item.latitude && item.longitude) {
+                            const lat = parseFloat(item.latitude);
+                            const lng = parseFloat(item.longitude);
+                            const marker = new google.maps.Marker({
+                                position: { lat: lat, lng: lng },
+                                map: map,
+                                label: { text: `${item.nom || 'ANONYME'}`, className: 'address-label' }
+                            });
+
+                            const infoWindow = new google.maps.InfoWindow({
+                                content: `<div style="padding:10px; text-align:center;">
+                                    <b style="text-transform:uppercase;">${item.nom}</b><br>
+                                    <span style="font-size:10px; color:gray;">${item.quartier || ''}</span><br>
+                                    <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" style="display:inline-block; margin-top:10px; background:#ef4444; color:#fff; padding:6px 12px; border-radius:8px; text-decoration:none; font-size:10px; font-weight:bold;">GPS</a>
+                                </div>`
+                            });
+
+                            marker.addListener("click", () => { infoWindow.open(map, marker); });
+                        }
+                    });
                 }
-            }, () => {
-                alert("Activez votre GPS");
-                btn.disabled = false;
-                btn.innerText = "RÉESSAYER";
-            });
+            } catch (err) { console.error(err); }
         }
+        window.onload = initMap;
     </script>
 </body>
 </html>
