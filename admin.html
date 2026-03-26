@@ -7,10 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="bg-slate-100 p-4">
-    <div class="max-w-4xl mx-auto mb-4">
-        <a href="index.html" class="text-xs font-bold text-slate-500 hover:text-blue-600">← Retour au Recensement</a>
-    </div>
+<body class="bg-slate-100 p-4 pb-20">
 
     <div id="login-screen" class="max-w-md mx-auto mt-20 bg-white p-8 rounded-3xl shadow-xl text-center border-t-8 border-red-600">
         <h2 class="text-2xl font-black mb-6">Accès Sécurisé 🇬🇳</h2>
@@ -19,11 +16,12 @@
     </div>
 
     <div id="admin-content" class="hidden max-w-4xl mx-auto">
-        <div class="flex justify-between items-center mb-6 bg-white p-6 rounded-2xl shadow-sm border-b-4 border-green-500">
-            <h1 class="text-xl font-black uppercase tracking-widest">Base de Données GPS</h1>
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-6 rounded-2xl shadow-sm border-b-4 border-green-500 gap-4">
+            <h1 class="text-xl font-black uppercase tracking-widest text-slate-800 text-center md:text-left">Base de Données GPS</h1>
             <div class="flex gap-2">
-                <a href="map.html" class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-bold">VOIR CARTE</a>
-                <button onclick="location.reload()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold">ACTUALISER</button>
+                <a href="carte.html" class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-bold">VOIR CARTE</a>
+                <a href="index.html" class="bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-bold">AJOUTER</a>
+                <button onclick="location.reload()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold">🔄</button>
             </div>
         </div>
         <div id="data-list" class="space-y-4"></div>
@@ -46,9 +44,7 @@
             container.innerHTML = "";
 
             data.forEach(item => {
-                // CORRECTION ICI : URL Google Maps correcte
                 const mapsUrl = `https://www.google.com/maps?q=${item.latitude},${item.longitude}`;
-
                 const card = document.createElement('div');
                 card.className = "bg-white p-5 rounded-2xl shadow-sm flex justify-between items-center gap-4";
                 card.innerHTML = `
@@ -66,3 +62,4 @@
         }
     </script>
 </body>
+</html>
