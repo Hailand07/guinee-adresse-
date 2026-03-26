@@ -9,21 +9,18 @@
 </head>
 <body class="bg-slate-100 min-h-screen p-4">
 
-    <div id="login-screen" class="max-w-md mx-auto mt-20 bg-white p-8 rounded-3xl shadow-xl text-center">
-        <h2 class="text-2xl font-black mb-6 text-slate-900">Accès Sécurisé 🇬🇳</h2>
-        <input type="password" id="admin-pass" placeholder="Code d'accès" class="w-full p-4 bg-gray-100 rounded-xl mb-4 outline-none border-2 focus:border-blue-500 text-center text-xl font-bold">
-        <button onclick="checkPass()" class="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-slate-800 transition-all">SE CONNECTER</button>
+    <div id="login-screen" class="max-w-md mx-auto mt-20 bg-white p-8 rounded-3xl shadow-xl text-center border-t-8 border-slate-900">
+        <h2 class="text-2xl font-black mb-6">Accès Sécurisé 🇬🇳</h2>
+        <input type="password" id="admin-pass" placeholder="Code secret" class="w-full p-4 bg-gray-100 rounded-xl mb-4 text-center text-2xl outline-none border-2 focus:border-green-500">
+        <button onclick="checkPass()" class="w-full bg-slate-900 text-white font-black py-4 rounded-xl">SE CONNECTER</button>
     </div>
 
     <div id="admin-content" class="hidden max-w-4xl mx-auto">
-        <div class="flex justify-between items-center mb-6">
-            <h1 class="text-2xl font-black text-slate-900 uppercase tracking-tight">Liste des Résidents</h1>
-            <button onclick="location.reload()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-blue-700">Actualiser</button>
+        <div class="flex justify-between items-center mb-6 bg-white p-6 rounded-2xl shadow-sm">
+            <h1 class="text-xl font-black text-slate-900 uppercase">Registre des Adresses</h1>
+            <button onclick="location.reload()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-xs">ACTUALISER</button>
         </div>
-
-        <div id="data-list" class="space-y-4 pb-10">
-            <p class="text-center text-slate-400 font-medium italic">Chargement des données en cours...</p>
-        </div>
+        <div id="data-list" class="space-y-4"></div>
     </div>
 
     <script>
@@ -32,14 +29,11 @@
         const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         function checkPass() {
-            const pass = document.getElementById('admin-pass').value;
-            if(pass === "22400") {
+            if(document.getElementById('admin-pass').value === "22400") {
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('admin-content').classList.remove('hidden');
                 loadData();
-            } else {
-                alert("Code incorrect !");
-            }
+            } else { alert("Code incorrect"); }
         }
 
         async function loadData() {
@@ -51,49 +45,31 @@
             const container = document.getElementById('data-list');
             container.innerHTML = "";
 
-            if (error) {
-                container.innerHTML = `<div class="p-4 bg-red-100 text-red-700 rounded-xl text-center font-bold">Erreur : ${error.message}</div>`;
-                return;
-            }
-
-            if (!data || data.length === 0) {
-                container.innerHTML = "<p class='text-center text-slate-500 py-10 font-bold'>Aucun enregistrement trouvé dans la base.</p>";
-                return;
-            }
+            if (error) return container.innerHTML = "Erreur de connexion.";
 
             data.forEach(item => {
-                let mapsUrl, itineraryUrl;
-
-                // LOGIQUE DE MISE À JOUR : Priorité Lat/Lon pour une précision infaillible
-                if (item.latitude && item.longitude) {
-                    // Utilisation des coordonnées GPS directes
-                    mapsUrl = `https://www.google.com/maps?q=${item.latitude},${item.longitude}`;
-                    itineraryUrl = `https://www.google.com/maps/dir/?api=1&destination=${item.latitude},${item.longitude}`;
-                } else {
-                    // Secours avec le Plus Code + Guinea pour éviter la France
-                    const query = encodeURIComponent(item.plus_code + " Guinea");
-                    mapsUrl = `https://www.google.com/maps/search/?api=1&query=${query}`;
-                    itineraryUrl = `https://www.google.com/maps/dir/?api=1&destination=${query}`;
-                }
+                // SOLUTION RADICALE : On utilise les coordonnées GPS (Lat/Lon) 
+                // C'est ce qui empêchera le message "Impossible de trouver..."
+                const lat = item.latitude;
+                const lon = item.longitude;
+                
+                // Si on a les coordonnées, on ignore le Plus Code pour le lien
+                // Format : https://www.google.com/maps?q=latitude,longitude
+                const mapsUrl = (lat && lon) 
+                    ? `https://www.google.com/maps?q=${lat},${lon}`
+                    : `https://www.google.com/maps/search/${encodeURIComponent(item.plus_code + " Guinea")}`;
 
                 const card = document.createElement('div');
-                card.className = "bg-white p-5 rounded-2xl shadow-sm border-l-4 border-green-500 mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow";
+                card.className = "bg-white p-5 rounded-2xl shadow-sm border-l-8 border-green-600 flex flex-col md:flex-row justify-between items-center gap-4";
                 card.innerHTML = `
                     <div class="flex-1">
-                        <h3 class="font-bold text-slate-900 text-lg leading-tight uppercase">${item.nom || 'Sans Nom'}</h3>
-                        <p class="text-sm text-slate-600 font-medium">${item.quartier || 'Quartier non précisé'} • <span class="text-green-600 font-bold">${item.telephone || ''}</span></p>
-                        <div class="mt-2 p-2 bg-slate-50 rounded-lg border border-slate-100 inline-block">
-                           <p class="text-[10px] font-mono text-blue-600 uppercase tracking-tight font-black">CODE : ${item.plus_code}</p>
-                        </div>
+                        <h3 class="font-bold text-slate-900 uppercase">${item.nom}</h3>
+                        <p class="text-sm text-slate-500">${item.quartier} • <span class="text-green-600 font-bold">${item.telephone}</span></p>
+                        <p class="text-[10px] font-mono text-blue-500 mt-1 font-bold">PLUS CODE : ${item.plus_code}</p>
                     </div>
-                    <div class="flex gap-2 w-full md:w-auto">
-                        <a href="${mapsUrl}" target="_blank" class="flex-1 md:flex-none text-center bg-slate-900 text-white px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all">
-                            Voir
-                        </a>
-                        <a href="${itineraryUrl}" target="_blank" class="flex-1 md:flex-none text-center bg-blue-600 text-white px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all">
-                            GPS
-                        </a>
-                    </div>
+                    <a href="${mapsUrl}" target="_blank" class="w-full md:w-auto bg-slate-900 text-white px-8 py-3 rounded-xl text-center font-black text-xs tracking-widest">
+                        LOCALISER
+                    </a>
                 `;
                 container.appendChild(card);
             });
