@@ -44,6 +44,17 @@
                 disableDefaultUI: true, // Désactive les boutons Google pour plus de propreté
                 zoomControl: true, // On garde juste le zoom
             });
+            // ... (Dans la fonction initMap, partie InfoWindow)
+const infoWindow = new google.maps.InfoWindow({
+    content: `
+        <div style="padding:10px; font-family:sans-serif; text-align:center;">
+            <h3 style="margin:0; font-weight:bold; text-transform:uppercase; color:#0f172a;">${item.nom}</h3>
+            <p style="margin:5px 0; font-size:11px; color:gray;">${item.quartier}</p>
+            <a href="https://www.google.com/maps?q=${item.latitude},${item.longitude}" target="_blank" style="display:inline-block; background-color:#1d4ed8; color:white; font-size:10px; font-weight:bold; padding:6px 12px; text-decoration:none; border-radius:6px; margin-top:5px;">OUVRIR GPS</a>
+        </div>
+    `
+});
+
 
             // Récupère toutes les données de Supabase
             const { data, error } = await _supabase.from('recensement').select('*');
