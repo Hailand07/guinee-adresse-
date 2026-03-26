@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SÉNÉFOUNYI | Carte Interactive</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?v=3.exp"></script>
+    <style>
+        #map { height: 100vh; width: 100%; }
+        .custom-label { font-weight: bold; color: #1e293b; background: white; padding: 2px 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 10px; }
+    </style>
+</head>
+<body class="bg-slate-100">
+
+    <div class="absolute top-4 left-4 z-10 bg-white p-4 rounded-2xl shadow-2xl border-2 border-slate-900 max-w-[200px]">
+        <h1 class="text-sm font-black uppercase">Sénéfounyi Map</h1>
+        <p id="count" class="text-[10px] text-green-600 font-bold">Chargement des points...</p>
+        <button onclick="location.reload()" class="mt-2 text-[10px] bg-slate-100 px-2 py-1 rounded font-bold">Actualiser</button>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        const _supabase = supabase.createClient("https://mxgdthpexmszutqhoawb.supabase.co", "sb_publishable_5Zxd2bCkRABYyBubCNXpdQ_jwZol9Rc");
+
+        async function initMap() {
+            // Centre la carte sur Conakry par défaut
+            const map = new google.maps.Map(document.getElementById("map"), {
+                zoom: 13,
+                center: { lat: 9.6412, lng: -13.5784 },
+                mapId: "DEMO_MAP_ID", // Permet d'utiliser les styles modernes
+            });
+
+            // Récupère toutes les adresses de Supabase
+            const { data, error } = await _supabase.from('recensement').select('*');
+
+            if (data) {
+                document.getElementById('count').innerText = data.length + " adresses enregistrées";
+                
+                data.forEach(item => {
+                    if(item.latitude && item.longitude) {
+                        const marker = new google.maps.Marker({
+                            position: { lat: item.latitude, lng: item.longitude },
+                            map: map,
+                            title: item.nom,
+                            icon: {
+                                path: google.maps.SymbolPath.CIRCLE,
+                                scale: 10,
+                                fillColor: "#009460",
+                                fillOpacity: 1,
+                                strokeColor: "#ffffff",
+                                strokeWeight: 2,
+                            }
+                        });
+
+                        // Bulle d'info au clic
+                        const infoWindow = new google.maps.InfoWindow({
+                            content: `
+                                <div style="padding:10px; font-family:sans-serif;">
+                                    <h3 style="margin:0; font-weight:bold; text-transform:uppercase;">${item.nom}</h3>
+                                    <p style="margin:5px 0; font-size:12px; color:gray;">${item.quartier}</p>
+                                    <a href="https://www.google.com/maps?q=${item.latitude},${item.longitude}" target="_blank" style="color:blue; font-size:11px; font-weight:bold;">Y ALLER (GPS)</a>
+                                </div>
+                            `
+                        });
+
+                        marker.addListener("click", () => {
+                            infoWindow.open(map, marker);
+                        });
+                    }
+                });
+            }
+        }
+
+        // Lancer la carte au chargement
+        window.onload = initMap;
+    </script>
+</body>
+</html>
