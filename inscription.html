@@ -12,36 +12,28 @@
     <div class="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl p-8 border border-slate-100">
         <header class="text-center mb-8">
             <h2 id="role-title" class="text-2xl font-black text-slate-900 uppercase tracking-tighter underline decoration-orange-500 decoration-4 underline-offset-8">Inscription</h2>
-            <p class="text-slate-400 text-[10px] font-bold mt-4 uppercase tracking-widest">Informations réelles requises</p>
         </header>
 
         <form id="form-inscription" class="space-y-4">
-            <div>
-                <label class="text-[10px] font-black uppercase text-slate-400 ml-2">Nom Complet</label>
-                <input type="text" id="nom" required class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-slate-900">
-            </div>
-            <div>
-                <label class="text-[10px] font-black uppercase text-slate-400 ml-2">WhatsApp (6xx...)</label>
-                <input type="tel" id="telephone" required class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-slate-900">
-            </div>
+            <input type="text" id="nom" placeholder="Nom Complet" required class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-slate-900">
+            <input type="tel" id="telephone" placeholder="WhatsApp (6xx...)" required class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-slate-900">
 
             <div id="section-fournisseur" class="hidden space-y-4">
-                <input type="text" id="nom_boutique" placeholder="Nom de votre Boutique" class="w-full p-4 bg-slate-100 rounded-2xl border-none outline-none font-bold">
-                <input type="text" id="quartier" placeholder="Quartier du Magasin" class="w-full p-4 bg-slate-100 rounded-2xl border-none outline-none font-bold">
+                <input type="text" id="nom_boutique" placeholder="Nom de votre Boutique" class="w-full p-4 bg-slate-100 rounded-2xl border-none outline-none">
+                <input type="text" id="quartier" placeholder="Quartier" class="w-full p-4 bg-slate-100 rounded-2xl border-none outline-none">
             </div>
 
             <div id="section-livreur" class="hidden">
-                <label class="text-[10px] font-black uppercase text-slate-400 ml-2">Moyen de transport</label>
-                <select id="vehicule" class="w-full p-4 bg-slate-100 rounded-2xl border-none outline-none italic font-bold">
+                <select id="vehicule" class="w-full p-4 bg-slate-100 rounded-2xl border-none outline-none font-bold">
                     <option value="moto">Moto</option>
                     <option value="velo">Vélo / Tricycle</option>
                 </select>
             </div>
 
-            <button type="submit" id="btn-submit" class="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-lg uppercase text-xs tracking-widest mt-4 transition-transform active:scale-95">
+            <button type="submit" id="btn-submit" class="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-lg uppercase text-[10px] tracking-widest mt-4">
                 Créer mon compte
             </button>
-            <a href="ifinded.html" class="block text-center text-[10px] font-bold text-slate-400 uppercase mt-4">Retour</a>
+            <a href="ifinded.html" class="block text-center text-[10px] font-bold text-slate-400 uppercase mt-4">Retour à l'accueil</a>
         </form>
     </div>
 
@@ -52,12 +44,12 @@
 
         window.onload = () => {
             if (role === 'fournisseur') {
-                document.getElementById('role-title').innerText = "Devenir Fournisseur";
+                document.getElementById('role-title').innerText = "Devenir Vendeur";
                 document.getElementById('section-fournisseur').classList.remove('hidden');
             } else if (role === 'livreur') {
                 document.getElementById('role-title').innerText = "Devenir Livreur";
                 document.getElementById('section-livreur').classList.remove('hidden');
-            } else if (!role) {
+            } else {
                 window.location.href = 'ifinded.html';
             }
         };
@@ -65,7 +57,7 @@
         document.getElementById('form-inscription').onsubmit = async (e) => {
             e.preventDefault();
             const btn = document.getElementById('btn-submit');
-            btn.innerText = "PATIENTEZ...";
+            btn.innerText = "CRÉATION...";
 
             const userData = {
                 nom: document.getElementById('nom').value,
@@ -78,13 +70,14 @@
 
             const { data, error } = await _supabase.from('profils').insert([userData]).select();
 
-            if (error) {
-                alert("Erreur base de données.");
-                btn.innerText = "RÉESSAYER";
-            } else {
+            if (!error) {
                 localStorage.setItem('senefounyi_user_active', JSON.stringify(data[0]));
                 localStorage.setItem('senefounyi_role', role);
-                window.location.href = role === 'fournisseur' ? 'interface_fournisseur.html' : 'interface_livreur.html';
+                const target = role === 'fournisseur' ? 'interface_fournisseur.html' : 'interface_livreur.html';
+                window.location.href = target;
+            } else {
+                alert("Erreur base de données");
+                btn.innerText = "RÉESSAYER";
             }
         };
     </script>
