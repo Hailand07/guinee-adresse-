@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iFinded | Inscription</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+
+    <div class="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl p-8 border border-slate-100">
+        <header class="text-center mb-8">
+            <h2 id="role-title" class="text-2xl font-black text-slate-900 uppercase tracking-tighter underline decoration-orange-500 decoration-4 underline-offset-8">Inscription</h2>
+            <p class="text-slate-400 text-[10px] font-bold mt-4 uppercase tracking-widest">Informations réelles requises</p>
+        </header>
+
+        <form id="form-inscription" class="space-y-4">
+            <div>
+                <label class="text-[10px] font-black uppercase text-slate-400 ml-2">Nom Complet</label>
+                <input type="text" id="nom" required class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-slate-900">
+            </div>
+            <div>
+                <label class="text-[10px] font-black uppercase text-slate-400 ml-2">WhatsApp (6xx...)</label>
+                <input type="tel" id="telephone" required class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-slate-900">
+            </div>
+
+            <div id="section-fournisseur" class="hidden space-y-4">
+                <input type="text" id="nom_boutique" placeholder="Nom de votre Boutique" class="w-full p-4 bg-slate-100 rounded-2xl border-none outline-none font-bold">
+                <input type="text" id="quartier" placeholder="Quartier du Magasin" class="w-full p-4 bg-slate-100 rounded-2xl border-none outline-none font-bold">
+            </div>
+
+            <div id="section-livreur" class="hidden">
+                <label class="text-[10px] font-black uppercase text-slate-400 ml-2">Moyen de transport</label>
+                <select id="vehicule" class="w-full p-4 bg-slate-100 rounded-2xl border-none outline-none italic font-bold">
+                    <option value="moto">Moto</option>
+                    <option value="velo">Vélo / Tricycle</option>
+                </select>
+            </div>
+
+            <button type="submit" id="btn-submit" class="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-lg uppercase text-xs tracking-widest mt-4 transition-transform active:scale-95">
+                Créer mon compte
+            </button>
+            <a href="ifinded.html" class="block text-center text-[10px] font-bold text-slate-400 uppercase mt-4">Retour</a>
+        </form>
+    </div>
+
+    <script>
+        const _supabase = supabase.createClient("https://plisyaquijijmwbbuegy.supabase.co", "sb_publishable_nfKDb7KXudkpzLPa-nTMtQ_FRW6sQj_");
+        const urlParams = new URLSearchParams(window.location.search);
+        const role = urlParams.get('role');
+
+        window.onload = () => {
+            if (role === 'fournisseur') {
+                document.getElementById('role-title').innerText = "Devenir Fournisseur";
+                document.getElementById('section-fournisseur').classList.remove('hidden');
+            } else if (role === 'livreur') {
+                document.getElementById('role-title').innerText = "Devenir Livreur";
+                document.getElementById('section-livreur').classList.remove('hidden');
+            } else if (!role) {
+                window.location.href = 'ifinded.html';
+            }
+        };
+
+        document.getElementById('form-inscription').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btn-submit');
+            btn.innerText = "PATIENTEZ...";
+
+            const userData = {
+                nom: document.getElementById('nom').value,
+                telephone: document.getElementById('telephone').value,
+                role: role,
+                nom_boutique: document.getElementById('nom_boutique').value || null,
+                quartier: document.getElementById('quartier').value || null,
+                vehicule: document.getElementById('vehicule').value || null
+            };
+
+            const { data, error } = await _supabase.from('profils').insert([userData]).select();
+
+            if (error) {
+                alert("Erreur base de données.");
+                btn.innerText = "RÉESSAYER";
+            } else {
+                localStorage.setItem('senefounyi_user_active', JSON.stringify(data[0]));
+                localStorage.setItem('senefounyi_role', role);
+                window.location.href = role === 'fournisseur' ? 'interface_fournisseur.html' : 'interface_livreur.html';
+            }
+        };
+    </script>
+</body>
+</html>
