@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iFinded | Espace Vendeur</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-50 min-h-screen pb-20">
+
+    <nav class="bg-white p-6 shadow-sm flex justify-between items-center">
+        <div>
+            <h1 class="font-black text-xl tracking-tighter text-green-600 uppercase">Ma Boutique</h1>
+            <p id="nom-boutique" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chargement...</p>
+        </div>
+        <button onclick="window.location.href='menu_pilotage.html'" class="bg-slate-100 p-3 rounded-2xl">☰</button>
+    </nav>
+
+    <section class="p-6">
+        <div class="bg-white rounded-[2.5rem] p-6 shadow-xl border border-slate-100">
+            <h2 class="font-black text-sm uppercase mb-4 flex items-center gap-2">
+                <span class="bg-green-100 p-2 rounded-lg">➕</span> Ajouter un produit
+            </h2>
+            
+            <div class="space-y-3">
+                <input type="text" id="p-nom" placeholder="Nom de l'article (ex: Sac de riz)" class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-green-500">
+                <input type="number" id="p-prix" placeholder="Prix en GNF" class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-green-500">
+                <input type="text" id="p-img" placeholder="Lien de la photo (URL)" class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-green-500">
+                <input type="text" id="p-zone" placeholder="Zone (ex: Matoto, Kaloum)" class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-green-500">
+                
+                <button onclick="ajouterProduit()" id="btn-add" class="w-full bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-100 uppercase text-[10px] tracking-widest mt-2 active:scale-95 transition-transform">
+                    Mettre en vente
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section class="p-6">
+        <h2 class="font-black text-[10px] uppercase text-slate-400 mb-4 tracking-[0.2em]">Mes articles en ligne</h2>
+        <div id="mes-produits" class="grid grid-cols-1 gap-4">
+            </div>
+    </section>
+
+    <script>
+        const _supabase = supabase.createClient("https://plisyaquijijmwbbuegy.supabase.co", "sb_publishable_nfKDb7KXudkpzLPa-nTMtQ_FRW6sQj_");
+        const user = JSON.parse(localStorage.getItem('senefounyi_user_active'));
+
+        window.onload = () => {
+            if (!user || user.role !== 'fournisseur') {
+                window.location.href = 'ifinded.html';
+            } else {
+                document.getElementById('nom-boutique').innerText = user.nom_boutique || user.nom;
+                chargerMesProduits();
+            }
+        };
+
+        async function ajouterProduit() {
+            const btn = document.getElementById('btn-add');
+            const nom = document.getElementById('p-nom').value;
+            const prix = document.getElementById('p-prix').value;
+            const img = document.getElementById('p-img').value;
+            const zone = document.getElementById('p-zone').value;
+
+            if(!nom || !prix) return alert("Remplis au moins le nom et le prix !");
+            
+            btn.innerText = "PUBLICATION...";
+            btn.disabled = true;
+
+            const { error } = await _supabase.from('produits').insert([{
+                nom_produit: nom,
+                prix: parseInt(prix),
+                image_url: img,
+                zone: zone,
+                fournisseur_id: user.id
+            }]);
+
+            if (error) {
+                alert("Erreur de publication");
+                console.error(error);
+            } else {
+                alert("Produit ajouté !");
+                location.reload();
+            }
+        }
+
+        async function chargerMesProduits() {
+            const { data } = await _supabase.from('produits').select('*').eq('fournisseur_id', user.id);
+            const container = document.getElementById('mes-produits');
+            
+            if(data && data.length > 0) {
+                container.innerHTML = data.map(p => `
+                    <div class="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4">
+                        <img src="${p.image_url || 'https://via.placeholder.com/80'}" class="w-16 h-16 rounded-2xl object-cover">
+                        <div class="flex-1">
+                            <h3 class="font-black text-xs uppercase">${p.nom_produit}</h3>
+                            <p class="text-[10px] text-orange-600 font-bold">${p.prix} GNF</p>
+                        </div>
+                        <button class="text-red-400 font-bold text-xl">×</button>
+                    </div>
+                `).join('');
+            } else {
+                container.innerHTML = "<p class='text-center text-slate-400 text-xs italic'>Aucun produit en vente pour le moment.</p>";
+            }
+        }
+    </script>
+</body>
+</html>
