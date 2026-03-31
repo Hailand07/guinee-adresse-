@@ -34,7 +34,6 @@
 
         h1 { font-size: 1.3rem; color: var(--admin-blue); text-align: center; margin-bottom: 5px; }
 
-        /* Scanner Zone */
         #reader {
             width: 100%;
             min-height: 250px;
@@ -46,24 +45,18 @@
             position: relative;
         }
 
-        /* Ligne de scan et bordures internes */
-        #reader__scan_region {
-            border: 2px solid rgba(255, 255, 255, 0.2) !important;
-        }
+        #reader__scan_region { border: 2px solid rgba(255, 255, 255, 0.2) !important; }
 
         #reader::after {
             content: "";
             position: absolute;
-            top: 50%;
-            left: 10%;
-            right: 10%;
-            height: 2px;
+            top: 50%; left: 10%; right: 10%; height: 2px;
             background: rgba(255, 0, 0, 0.7);
             box-shadow: 0 0 12px red;
             z-index: 5;
             pointer-events: none;
             animation: scanMove 2s infinite ease-in-out;
-            display: none; /* Masqué par défaut, affiché quand le scanner démarre */
+            display: none;
         }
 
         .scanning #reader::after { display: block; }
@@ -74,9 +67,7 @@
             100% { transform: translateY(-40px); }
         }
 
-        #reader video {
-            object-fit: cover !important;
-        }
+        #reader video { object-fit: cover !important; }
 
         .start-overlay {
             position: absolute;
@@ -96,28 +87,11 @@
             border-radius: 50px;
             font-weight: bold;
             cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
 
         .form-group { margin-bottom: 12px; }
-
-        label {
-            display: block;
-            font-weight: bold;
-            margin-bottom: 4px;
-            font-size: 0.85rem;
-        }
-
-        input, select {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            box-sizing: border-box;
-            font-size: 1rem;
-            -webkit-appearance: none;
-        }
-
+        label { display: block; font-weight: bold; margin-bottom: 4px; font-size: 0.85rem; }
+        input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 1rem; }
         input[readonly] { background: #f0f4f8; color: var(--success-green); border-color: var(--success-green); }
 
         .btn-save {
@@ -132,13 +106,7 @@
             margin-top: 10px;
         }
 
-        #status-msg {
-            text-align: center;
-            font-size: 0.9rem;
-            margin-bottom: 10px;
-            font-weight: bold;
-            min-height: 1.2em;
-        }
+        #status-msg { text-align: center; font-size: 0.9rem; margin-bottom: 10px; font-weight: bold; min-height: 1.2em; }
     </style>
 </head>
 <body>
@@ -161,7 +129,7 @@
 
         <div class="form-group">
             <label>Nom du Produit</label>
-            <input type="text" id="p-name" placeholder="Ex: Riz Uncle Sam 25kg">
+            <input type="text" id="p-name" placeholder="En attente de scan...">
         </div>
 
         <div class="form-group">
@@ -169,6 +137,8 @@
             <select id="p-cat">
                 <option value="Alimentation">Alimentation</option>
                 <option value="Boisson">Boisson</option>
+                <option value="Hygiène">Hygiène</option>
+                <option value="Électronique">Électronique</option>
                 <option value="Divers">Divers</option>
             </select>
         </div>
@@ -183,94 +153,97 @@
 
         let html5QrCode;
 
+        // Fonction pour envoyer dans Supabase automatiquement
+        async function autoEnregistrer(produit) {
+            const { error } = await _supabase
+                .from('referentiel_produits')
+                .insert([produit]);
+            
+            if(!error) {
+                const msg = document.getElementById('status-msg');
+                msg.innerHTML = "✅ <span style='color:green'>Produit ajouté automatiquement à la base !</span>";
+                if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            }
+        }
+
         async function chercherInfosProduit(barcode) {
             const statusMsg = document.getElementById('status-msg');
             const nameInput = document.getElementById('p-name');
             
-            statusMsg.innerHTML = "🔍 Recherche dans la base locale...";
+            statusMsg.innerHTML = "🔍 Vérification locale...";
 
-            const { data, error } = await _supabase
+            const { data } = await _supabase
                 .from('referentiel_produits')
                 .select('*')
                 .eq('code_barre', barcode)
                 .maybeSingle();
 
             if (data) {
-                statusMsg.innerHTML = "<span style='color:orange'>⚠️ Déjà dans le catalogue !</span>";
+                statusMsg.innerHTML = "<span style='color:orange'>⚠️ Déjà présent.</span>";
                 nameInput.value = data.nom_standard;
-                document.getElementById('p-cat').value = data.categorie;
+                document.getElementById('p-cat').value = data.categorie || "Divers";
                 return;
             }
 
-            statusMsg.innerHTML = "🌍 Produit inconnu. Recherche sur le Web...";
+            statusMsg.innerHTML = "🌍 Recherche Web (OpenData)...";
             
             try {
-                const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
-                const result = await response.json();
+                // Essai 1 : Open Food Facts (Alimentation)
+                let response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+                let result = await response.json();
 
                 if (result.status === 1) {
-                    const nomTrouve = result.product.product_name_fr || result.product.product_name || "Produit Web";
-                    nameInput.value = nomTrouve;
-                    statusMsg.innerHTML = "<span style='color:var(--success-green)'>✨ Infos trouvées sur le Web !</span>";
-                } else {
-                    statusMsg.innerHTML = "<span style='color:red'>❌ Inconnu partout.</span>";
-                    const searchUrl = `https://www.jumia.com.gn/catalog/?q=${barcode}`;
-                    statusMsg.innerHTML += ` <a href="${searchUrl}" target="_blank" style="color:blue; font-size:0.7rem;">Chercher sur Jumia ↗️</a>`;
-                    nameInput.value = ""; 
+                    const p = result.product;
+                    const nouveauProduit = {
+                        code_barre: barcode,
+                        nom_standard: p.product_name_fr || p.product_name || "Produit Web",
+                        description: p.generic_name_fr || p.ingredients_text || "",
+                        photos: p.image_url || "",
+                        categorie: "Alimentation"
+                    };
+                    nameInput.value = nouveauProduit.nom_standard;
+                    await autoEnregistrer(nouveauProduit);
+                    return;
                 }
+
+                // Essai 2 : Go-UPC ou Open EAN (Généraliste) via une API de secours si besoin
+                // Ici on simule une recherche généraliste simplifiée
+                statusMsg.innerHTML = "🌍 Produit non-alimentaire ? Recherche Amazon...";
+                
+                const searchUrl = `https://www.amazon.fr/s?k=${barcode}`;
+                statusMsg.innerHTML = `<span style='color:red'>❌ Inconnu.</span> <a href="${searchUrl}" target="_blank" style="color:blue; font-size:0.8rem;">Vérifier sur Amazon ↗️</a>`;
+                nameInput.value = ""; 
+
             } catch (e) {
-                statusMsg.innerHTML = "Erreur réseau lors de la recherche.";
+                statusMsg.innerHTML = "Erreur de connexion web.";
             }
         }
 
         async function initScanner() {
             document.getElementById('overlay').style.display = 'none';
-            document.getElementById('status-msg').innerText = "Accès caméra...";
             document.getElementById('main-cont').classList.add('scanning');
 
             html5QrCode = new Html5Qrcode("reader", { 
                 verbose: false,
-                formatsToSupport: [ 
-                    Html5QrcodeSupportedFormats.EAN_13, 
-                    Html5QrcodeSupportedFormats.EAN_8, 
-                    Html5QrcodeSupportedFormats.UPC_A, 
-                    Html5QrcodeSupportedFormats.UPC_E,
-                    Html5QrcodeSupportedFormats.QR_CODE 
-                ]
+                formatsToSupport: [ Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.QR_CODE ]
             });
 
             const config = { 
-                fps: 20, 
-                qrbox: { width: 300, height: 150 }, 
+                fps: 20, qrbox: { width: 300, height: 150 },
                 aspectRatio: 1.0,
-                videoConstraints: {
-                    facingMode: "environment",
-                    width: { min: 640, ideal: 1280, max: 1920 },
-                    height: { min: 480, ideal: 720, max: 1080 },
-                    focusMode: "continuous"
-                }
+                videoConstraints: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
             };
 
             try {
-                await html5QrCode.start(
-                    { facingMode: "environment" }, 
-                    config, 
-                    async (text) => {
-                        html5QrCode.pause(); 
-                        document.getElementById('barcode').value = text;
-                        if(navigator.vibrate) navigator.vibrate(100);
-                        await chercherInfosProduit(text);
-                        
-                        // Pause de 3 secondes avant de permettre un nouveau scan
-                        setTimeout(() => html5QrCode.resume(), 3000);
-                    }
-                );
-                document.getElementById('status-msg').innerText = "Scanner prêt : Visez un code-barres";
+                await html5QrCode.start({ facingMode: "environment" }, config, async (text) => {
+                    html5QrCode.pause(); 
+                    document.getElementById('barcode').value = text;
+                    await chercherInfosProduit(text);
+                    setTimeout(() => html5QrCode.resume(), 4000);
+                });
+                document.getElementById('status-msg').innerText = "Visez un code-barres";
             } catch (err) {
-                console.error(err);
-                document.getElementById('status-msg').innerHTML = "<span style='color:red'>Erreur : Caméra bloquée.</span>";
                 document.getElementById('overlay').style.display = 'flex';
-                document.getElementById('main-cont').classList.remove('scanning');
             }
         }
 
@@ -280,10 +253,7 @@
             const cat = document.getElementById('p-cat').value;
             const btn = document.getElementById('btn-save');
 
-            if(!barcode || !name) {
-                alert("Veuillez scanner un code et donner un nom.");
-                return;
-            }
+            if(!barcode || !name) return alert("Données manquantes.");
 
             btn.disabled = true;
             btn.innerText = "Enregistrement...";
@@ -293,12 +263,9 @@
                 .insert([{ code_barre: barcode, nom_standard: name, categorie: cat }]);
 
             if(!error) {
-                alert("✅ Produit ajouté avec succès !");
+                alert("✅ Ajouté !");
                 document.getElementById('barcode').value = "";
                 document.getElementById('p-name').value = "";
-                document.getElementById('status-msg').innerText = "Prêt pour le scan suivant...";
-            } else {
-                alert("Erreur: " + error.message);
             }
             btn.disabled = false;
             btn.innerText = "ENREGISTRER AU CATALOGUE";
