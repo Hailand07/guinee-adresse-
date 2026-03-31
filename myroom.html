@@ -13,6 +13,7 @@
             --admin-blue: #34495e;
             --success-green: #2ecc71;
             --bg-light: #f4f7f6;
+            --info-blue: #3498db;
         }
 
         body {
@@ -106,6 +107,18 @@
             margin-top: 10px;
         }
 
+        .btn-stats {
+            width: 100%;
+            padding: 10px;
+            background: none;
+            color: var(--info-blue);
+            border: 1px dashed var(--info-blue);
+            border-radius: 12px;
+            font-size: 0.9rem;
+            margin-top: 15px;
+            cursor: pointer;
+        }
+
         #status-msg { text-align: center; font-size: 0.9rem; margin-bottom: 10px; font-weight: bold; min-height: 1.2em; }
     </style>
 </head>
@@ -144,6 +157,8 @@
         </div>
 
         <button class="btn-save" id="btn-save" onclick="enregistrer()">ENREGISTRER AU CATALOGUE</button>
+        
+        <button class="btn-stats" onclick="analyserStock()">📊 VOIR STATISTIQUES (SINEFOUNYI)</button>
     </div>
 
     <script>
@@ -151,9 +166,56 @@
         const supabaseKey = 'sb_publishable_nfKDb7KXudkpzLPa-nTMtQ_FRW6sQj_'; 
         const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
+        // --- NOUVELLES FONCTIONS D'AJUSTEMENT ---
+
+        // Méthode par Script (Automatique)
+        async function importMassif(barcodesArray) {
+            for (const code of barcodesArray) {
+                const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
+                const json = await res.json();
+                
+                if (json.status === 1) {
+                    await _supabase.from('referentiel_produits').insert([{
+                        code_barre: code,
+                        nom_standard: json.product.product_name,
+                        categorie: determineCategorie(json.product.categories)
+                    }]);
+                }
+            }
+        }
+
+        function determineCategorie(cats) {
+            if (!cats) return "Divers";
+            if (cats.toLowerCase().includes('boisson')) return "Boisson";
+            return "Alimentation";
+        }
+
+        // Analyse de données par catégorie
+        async function analyserStock() {
+            const categoriesCibles = ['Alimentation', 'Boisson'];
+            
+            const { data, error } = await _supabase
+                .from('referentiel_produits')
+                .select('categorie, nom_standard')
+                .in('categorie', categoriesCibles);
+
+            if (data) {
+                const stats = data.reduce((acc, produit) => {
+                    acc[produit.categorie] = (acc[produit.categorie] || 0) + 1;
+                    return acc;
+                }, {});
+
+                console.log("Analyse Sinefounyi :", stats);
+                alert(`Analyse Sinefounyi : \nAlimentation: ${stats['Alimentation'] || 0} \nBoissons: ${stats['Boisson'] || 0}`);
+            } else {
+                alert("Aucune donnée à analyser.");
+            }
+        }
+
+        // --- SCRIPTE EXISTANT ---
+
         let html5QrCode;
 
-        // Fonction de notification et enregistrement automatique
         async function autoEnregistrer(produit) {
             const statusMsg = document.getElementById('status-msg');
             
@@ -162,10 +224,10 @@
                 .insert([produit]);
             
             if(!error) {
-                statusMsg.innerHTML = "✅ <span style='color:var(--success-green)'>Ajouté automatiquement (Nom + Photo + Description) !</span>";
+                statusMsg.innerHTML = "✅ <span style='color:var(--success-green)'>Ajouté automatiquement !</span>";
                 if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
             } else {
-                statusMsg.innerHTML = "<span style='color:orange'>Déjà en base ou erreur insertion.</span>";
+                statusMsg.innerHTML = "<span style='color:orange'>Déjà en base ou erreur.</span>";
             }
         }
 
@@ -182,16 +244,15 @@
                 .maybeSingle();
 
             if (data) {
-                statusMsg.innerHTML = "<span style='color:orange'>⚠️ Produit déjà connu localement.</span>";
+                statusMsg.innerHTML = "<span style='color:orange'>⚠️ Produit déjà connu.</span>";
                 nameInput.value = data.nom_standard;
                 document.getElementById('p-cat').value = data.categorie || "Divers";
                 return;
             }
 
-            statusMsg.innerHTML = "🌍 Recherche Open Data mondiale...";
+            statusMsg.innerHTML = "🌍 Recherche Open Data...";
             
             try {
-                // 1. Essai Alimentaire (Open Food Facts)
                 let resOFF = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
                 let dataOFF = await resOFF.json();
 
@@ -202,21 +263,19 @@
                         nom_standard: p.product_name_fr || p.product_name || "Produit Web",
                         description: p.generic_name_fr || p.ingredients_text || "Aucune description",
                         photos: p.image_url || "",
-                        categorie: "Alimentation"
+                        categorie: determineCategorie(p.categories)
                     };
                     nameInput.value = nouveau.nom_standard;
+                    document.getElementById('p-cat').value = nouveau.categorie;
                     await autoEnregistrer(nouveau);
                     return;
                 }
 
-                // 2. Essai Généraliste (Open EAN via proxy ou fallback)
-                statusMsg.innerHTML = "🌍 Produit non-alimentaire ? Recherche Amazon...";
-                const searchUrl = `https://www.amazon.fr/s?k=${barcode}`;
-                statusMsg.innerHTML = `<span style='color:red'>❌ Inconnu.</span> <a href="${searchUrl}" target="_blank" style="color:blue; font-size:0.8rem;">Vérifier sur Amazon ↗️</a>`;
+                statusMsg.innerHTML = "<span style='color:red'>❌ Inconnu.</span>";
                 nameInput.value = ""; 
 
             } catch (e) {
-                statusMsg.innerHTML = "Erreur de connexion aux serveurs.";
+                statusMsg.innerHTML = "Erreur de connexion.";
             }
         }
 
@@ -232,7 +291,7 @@
             const config = { 
                 fps: 20, qrbox: { width: 300, height: 150 },
                 aspectRatio: 1.0,
-                videoConstraints: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+                videoConstraints: { facingMode: "environment" }
             };
 
             try {
@@ -240,9 +299,8 @@
                     html5QrCode.pause(); 
                     document.getElementById('barcode').value = text;
                     await chercherInfosProduit(text);
-                    setTimeout(() => html5QrCode.resume(), 5000); // 5 sec pour laisser lire la notification
+                    setTimeout(() => html5QrCode.resume(), 5000);
                 });
-                document.getElementById('status-msg').innerText = "Scanner prêt...";
             } catch (err) {
                 document.getElementById('overlay').style.display = 'flex';
             }
