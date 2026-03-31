@@ -41,29 +41,37 @@
             border-radius: 15px;
             overflow: hidden;
             background: #000;
-            margin-bottom: 10px;
+            margin-bottom: 20px;
             border: 3px solid var(--admin-blue);
             position: relative;
         }
 
-        /* Ligne de scan animée */
-        .scan-line {
-            position: absolute;
-            left: 10%;
-            width: 80%;
-            height: 2px;
-            background: rgba(255, 0, 0, 0.7);
-            box-shadow: 0 0 8px 1px red;
-            z-index: 5;
-            top: 50%;
-            display: none; /* Apparaît au démarrage */
-            animation: scanMove 2s infinite ease-in-out;
+        /* Ligne de scan et bordures internes */
+        #reader__scan_region {
+            border: 2px solid rgba(255, 255, 255, 0.2) !important;
         }
 
+        #reader::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            right: 10%;
+            height: 2px;
+            background: rgba(255, 0, 0, 0.7);
+            box-shadow: 0 0 12px red;
+            z-index: 5;
+            pointer-events: none;
+            animation: scanMove 2s infinite ease-in-out;
+            display: none; /* Masqué par défaut, affiché quand le scanner démarre */
+        }
+
+        .scanning #reader::after { display: block; }
+
         @keyframes scanMove {
-            0% { top: 30%; }
-            50% { top: 70%; }
-            100% { top: 30%; }
+            0% { transform: translateY(-40px); }
+            50% { transform: translateY(40px); }
+            100% { transform: translateY(-40px); }
         }
 
         #reader video {
@@ -90,18 +98,6 @@
             cursor: pointer;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
-
-        /* Réglage manuel */
-        .scan-controls {
-            background: #eee;
-            padding: 10px;
-            border-radius: 10px;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .scan-controls label { margin-bottom: 0; flex-shrink: 0; }
 
         .form-group { margin-bottom: 12px; }
 
@@ -147,19 +143,13 @@
 </head>
 <body>
 
-    <div class="admin-container">
+    <div class="admin-container" id="main-cont">
         <h1>🛡️ Admin Catalogue</h1>
         
         <div id="reader">
-            <div class="scan-line" id="scan-line"></div>
             <div class="start-overlay" id="overlay">
                 <button class="btn-start" onclick="initScanner()">DÉMARRER LE SCANNER</button>
             </div>
-        </div>
-
-        <div class="scan-controls">
-            <label>Taille Zone :</label>
-            <input type="range" id="zoom-range" min="150" max="350" value="250" step="10" oninput="updateScannerSize(this.value)">
         </div>
 
         <div id="status-msg"></div>
@@ -192,13 +182,12 @@
         const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
         let html5QrCode;
-        let currentSize = 250;
 
         async function chercherInfosProduit(barcode) {
             const statusMsg = document.getElementById('status-msg');
             const nameInput = document.getElementById('p-name');
             
-            statusMsg.innerHTML = "🔍 Recherche...";
+            statusMsg.innerHTML = "🔍 Recherche dans la base locale...";
 
             const { data, error } = await _supabase
                 .from('referentiel_produits')
@@ -213,7 +202,7 @@
                 return;
             }
 
-            statusMsg.innerHTML = "🌍 Recherche sur le Web...";
+            statusMsg.innerHTML = "🌍 Produit inconnu. Recherche sur le Web...";
             
             try {
                 const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
@@ -222,31 +211,44 @@
                 if (result.status === 1) {
                     const nomTrouve = result.product.product_name_fr || result.product.product_name || "Produit Web";
                     nameInput.value = nomTrouve;
-                    statusMsg.innerHTML = "<span style='color:var(--success-green)'>✨ Infos trouvées !</span>";
+                    statusMsg.innerHTML = "<span style='color:var(--success-green)'>✨ Infos trouvées sur le Web !</span>";
                 } else {
-                    statusMsg.innerHTML = "<span style='color:red'>❌ Inconnu.</span>";
+                    statusMsg.innerHTML = "<span style='color:red'>❌ Inconnu partout.</span>";
+                    const searchUrl = `https://www.jumia.com.gn/catalog/?q=${barcode}`;
+                    statusMsg.innerHTML += ` <a href="${searchUrl}" target="_blank" style="color:blue; font-size:0.7rem;">Chercher sur Jumia ↗️</a>`;
                     nameInput.value = ""; 
                 }
             } catch (e) {
-                statusMsg.innerHTML = "Erreur réseau.";
+                statusMsg.innerHTML = "Erreur réseau lors de la recherche.";
             }
         }
 
-        async function updateScannerSize(newSize) {
-            currentSize = parseInt(newSize);
-            if (html5QrCode && html5QrCode.isScanning) {
-                // On redémarre rapidement le scanner pour appliquer la nouvelle taille de zone
-                await html5QrCode.stop();
-                startScannerWithConfig();
-            }
-        }
+        async function initScanner() {
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('status-msg').innerText = "Accès caméra...";
+            document.getElementById('main-cont').classList.add('scanning');
 
-        async function startScannerWithConfig() {
+            html5QrCode = new Html5Qrcode("reader", { 
+                verbose: false,
+                formatsToSupport: [ 
+                    Html5QrcodeSupportedFormats.EAN_13, 
+                    Html5QrcodeSupportedFormats.EAN_8, 
+                    Html5QrcodeSupportedFormats.UPC_A, 
+                    Html5QrcodeSupportedFormats.UPC_E,
+                    Html5QrcodeSupportedFormats.QR_CODE 
+                ]
+            });
+
             const config = { 
                 fps: 20, 
-                qrbox: { width: currentSize, height: Math.round(currentSize * 0.7) }, // Forme rectangulaire pour code-barres
+                qrbox: { width: 300, height: 150 }, 
                 aspectRatio: 1.0,
-                videoConstraints: { facingMode: "environment" }
+                videoConstraints: {
+                    facingMode: "environment",
+                    width: { min: 640, ideal: 1280, max: 1920 },
+                    height: { min: 480, ideal: 720, max: 1080 },
+                    focusMode: "continuous"
+                }
             };
 
             try {
@@ -254,29 +256,22 @@
                     { facingMode: "environment" }, 
                     config, 
                     async (text) => {
+                        html5QrCode.pause(); 
                         document.getElementById('barcode').value = text;
                         if(navigator.vibrate) navigator.vibrate(100);
                         await chercherInfosProduit(text);
+                        
+                        // Pause de 3 secondes avant de permettre un nouveau scan
+                        setTimeout(() => html5QrCode.resume(), 3000);
                     }
                 );
-                document.getElementById('scan-line').style.display = 'block';
                 document.getElementById('status-msg').innerText = "Scanner prêt : Visez un code-barres";
             } catch (err) {
                 console.error(err);
-                document.getElementById('status-msg').innerHTML = "<span style='color:red'>Erreur Caméra.</span>";
+                document.getElementById('status-msg').innerHTML = "<span style='color:red'>Erreur : Caméra bloquée.</span>";
+                document.getElementById('overlay').style.display = 'flex';
+                document.getElementById('main-cont').classList.remove('scanning');
             }
-        }
-
-        async function initScanner() {
-            document.getElementById('overlay').style.display = 'none';
-            document.getElementById('status-msg').innerText = "Accès caméra...";
-
-            html5QrCode = new Html5Qrcode("reader", { 
-                verbose: false,
-                experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-            });
-
-            await startScannerWithConfig();
         }
 
         async function enregistrer() {
@@ -298,7 +293,7 @@
                 .insert([{ code_barre: barcode, nom_standard: name, categorie: cat }]);
 
             if(!error) {
-                alert("✅ Produit ajouté !");
+                alert("✅ Produit ajouté avec succès !");
                 document.getElementById('barcode').value = "";
                 document.getElementById('p-name').value = "";
                 document.getElementById('status-msg').innerText = "Prêt pour le scan suivant...";
