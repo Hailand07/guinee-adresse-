@@ -153,16 +153,19 @@
 
         let html5QrCode;
 
-        // Fonction pour envoyer dans Supabase automatiquement
+        // Fonction de notification et enregistrement automatique
         async function autoEnregistrer(produit) {
+            const statusMsg = document.getElementById('status-msg');
+            
             const { error } = await _supabase
                 .from('referentiel_produits')
                 .insert([produit]);
             
             if(!error) {
-                const msg = document.getElementById('status-msg');
-                msg.innerHTML = "✅ <span style='color:green'>Produit ajouté automatiquement à la base !</span>";
+                statusMsg.innerHTML = "✅ <span style='color:var(--success-green)'>Ajouté automatiquement (Nom + Photo + Description) !</span>";
                 if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            } else {
+                statusMsg.innerHTML = "<span style='color:orange'>Déjà en base ou erreur insertion.</span>";
             }
         }
 
@@ -179,43 +182,41 @@
                 .maybeSingle();
 
             if (data) {
-                statusMsg.innerHTML = "<span style='color:orange'>⚠️ Déjà présent.</span>";
+                statusMsg.innerHTML = "<span style='color:orange'>⚠️ Produit déjà connu localement.</span>";
                 nameInput.value = data.nom_standard;
                 document.getElementById('p-cat').value = data.categorie || "Divers";
                 return;
             }
 
-            statusMsg.innerHTML = "🌍 Recherche Web (OpenData)...";
+            statusMsg.innerHTML = "🌍 Recherche Open Data mondiale...";
             
             try {
-                // Essai 1 : Open Food Facts (Alimentation)
-                let response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
-                let result = await response.json();
+                // 1. Essai Alimentaire (Open Food Facts)
+                let resOFF = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+                let dataOFF = await resOFF.json();
 
-                if (result.status === 1) {
-                    const p = result.product;
-                    const nouveauProduit = {
+                if (dataOFF.status === 1) {
+                    const p = dataOFF.product;
+                    const nouveau = {
                         code_barre: barcode,
                         nom_standard: p.product_name_fr || p.product_name || "Produit Web",
-                        description: p.generic_name_fr || p.ingredients_text || "",
+                        description: p.generic_name_fr || p.ingredients_text || "Aucune description",
                         photos: p.image_url || "",
                         categorie: "Alimentation"
                     };
-                    nameInput.value = nouveauProduit.nom_standard;
-                    await autoEnregistrer(nouveauProduit);
+                    nameInput.value = nouveau.nom_standard;
+                    await autoEnregistrer(nouveau);
                     return;
                 }
 
-                // Essai 2 : Go-UPC ou Open EAN (Généraliste) via une API de secours si besoin
-                // Ici on simule une recherche généraliste simplifiée
+                // 2. Essai Généraliste (Open EAN via proxy ou fallback)
                 statusMsg.innerHTML = "🌍 Produit non-alimentaire ? Recherche Amazon...";
-                
                 const searchUrl = `https://www.amazon.fr/s?k=${barcode}`;
                 statusMsg.innerHTML = `<span style='color:red'>❌ Inconnu.</span> <a href="${searchUrl}" target="_blank" style="color:blue; font-size:0.8rem;">Vérifier sur Amazon ↗️</a>`;
                 nameInput.value = ""; 
 
             } catch (e) {
-                statusMsg.innerHTML = "Erreur de connexion web.";
+                statusMsg.innerHTML = "Erreur de connexion aux serveurs.";
             }
         }
 
@@ -239,9 +240,9 @@
                     html5QrCode.pause(); 
                     document.getElementById('barcode').value = text;
                     await chercherInfosProduit(text);
-                    setTimeout(() => html5QrCode.resume(), 4000);
+                    setTimeout(() => html5QrCode.resume(), 5000); // 5 sec pour laisser lire la notification
                 });
-                document.getElementById('status-msg').innerText = "Visez un code-barres";
+                document.getElementById('status-msg').innerText = "Scanner prêt...";
             } catch (err) {
                 document.getElementById('overlay').style.display = 'flex';
             }
@@ -253,19 +254,21 @@
             const cat = document.getElementById('p-cat').value;
             const btn = document.getElementById('btn-save');
 
-            if(!barcode || !name) return alert("Données manquantes.");
+            if(!barcode || !name) return alert("Scannez un code d'abord.");
 
             btn.disabled = true;
-            btn.innerText = "Enregistrement...";
+            btn.innerText = "Envoi...";
 
             const { error } = await _supabase
                 .from('referentiel_produits')
                 .insert([{ code_barre: barcode, nom_standard: name, categorie: cat }]);
 
             if(!error) {
-                alert("✅ Ajouté !");
+                alert("✅ Produit enregistré !");
                 document.getElementById('barcode').value = "";
                 document.getElementById('p-name').value = "";
+            } else {
+                alert("Erreur: " + error.message);
             }
             btn.disabled = false;
             btn.innerText = "ENREGISTRER AU CATALOGUE";
