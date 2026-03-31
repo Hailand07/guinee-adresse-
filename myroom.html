@@ -32,206 +32,160 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         }
 
-        h1 { font-size: 1.3rem; color: var(--admin-blue); text-align: center; margin-bottom: 5px; }
-
-        /* Scanner Zone */
         #reader {
             width: 100%;
             min-height: 250px;
             border-radius: 15px;
             overflow: hidden;
             background: #000;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             border: 3px solid var(--admin-blue);
             position: relative;
         }
 
-        /* Empêcher Safari de déformer la vidéo */
-        #reader video {
-            object-fit: cover !important;
-        }
+        #reader video { object-fit: cover !important; }
 
-        .start-overlay {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
+        .controls-row {
             display: flex;
-            justify-content: center;
-            align-items: center;
-            background: rgba(0,0,0,0.85);
-            z-index: 10;
+            gap: 10px;
+            margin-bottom: 20px;
         }
 
-        .btn-start {
-            padding: 15px 30px;
-            background: var(--success-green);
-            color: white;
+        .btn-action {
+            flex: 1;
+            padding: 12px;
             border: none;
-            border-radius: 50px;
+            border-radius: 10px;
             font-weight: bold;
             cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            font-size: 0.9rem;
         }
+
+        .btn-flash { background: #f1c40f; color: #000; }
+        .btn-start { background: var(--success-green); color: white; }
 
         .form-group { margin-bottom: 12px; }
-
-        label {
-            display: block;
-            font-weight: bold;
-            margin-bottom: 4px;
-            font-size: 0.85rem;
-        }
-
-        input, select {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            box-sizing: border-box;
-            font-size: 1rem;
-            -webkit-appearance: none;
-        }
-
-        input[readonly] { background: #f0f4f8; color: var(--success-green); border-color: var(--success-green); }
+        label { display: block; font-weight: bold; margin-bottom: 4px; font-size: 0.85rem; }
+        input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 1rem; }
+        input[readonly] { background: #f0f4f8; color: var(--success-green); border-color: var(--success-green); font-weight: bold; }
 
         .btn-save {
             width: 100%;
             padding: 15px;
-            background: var(--success-green);
+            background: var(--admin-blue);
             color: white;
             border: none;
             border-radius: 12px;
             font-size: 1.1rem;
             font-weight: bold;
-            margin-top: 10px;
-        }
-
-        #status-msg {
-            text-align: center;
-            font-size: 0.9rem;
-            margin-bottom: 10px;
-            font-weight: bold;
-            min-height: 1.2em;
         }
     </style>
 </head>
 <body>
 
     <div class="admin-container">
-        <h1>🛡️ Admin Catalogue</h1>
+        <h1 style="text-align:center; font-size:1.2rem;">🛡️ Gestion Catalogue</h1>
         
-        <div id="reader">
-            <div class="start-overlay" id="overlay">
-                <button class="btn-start" onclick="initScanner()">DÉMARRER LE SCANNER</button>
-            </div>
+        <div id="reader"></div>
+
+        <div class="controls-row">
+            <button class="btn-action btn-start" id="btn-toggle" onclick="initScanner()">DÉMARRER SCAN</button>
+            <button class="btn-action btn-flash" id="btn-flash" onclick="toggleFlash()" style="display:none;">🔦 FLASH</button>
         </div>
 
-        <div id="status-msg"></div>
-
         <div class="form-group">
-            <label>Code-Barres</label>
-            <input type="text" id="barcode" placeholder="Code auto-détecté..." readonly>
+            <label>Code détecté</label>
+            <input type="text" id="barcode" placeholder="En attente..." readonly>
         </div>
 
         <div class="form-group">
             <label>Nom du Produit</label>
-            <input type="text" id="p-name" placeholder="Ex: Riz Uncle Sam 25kg">
+            <input type="text" id="p-name" placeholder="Ex: Sac de Riz 25kg">
         </div>
 
-        <div class="form-group">
-            <label>Catégorie</label>
-            <select id="p-cat">
-                <option value="Alimentation">Alimentation</option>
-                <option value="Boisson">Boisson</option>
-                <option value="Divers">Divers</option>
-            </select>
-        </div>
-
-        <button class="btn-save" id="btn-save" onclick="enregistrer()">ENREGISTRER AU CATALOGUE</button>
+        <button class="btn-save" id="btn-save" onclick="enregistrer()">ENREGISTRER</button>
     </div>
 
     <script>
-        const supabaseUrl = 'https://plisyaquijijmwbbuegy.supabase.co';
-        const supabaseKey = 'sb_publishable_nfKDb7KXudkpzLPa-nTMtQ_FRW6sQj_'; 
-        const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
-
+        const _supabase = supabase.createClient('https://plisyaquijijmwbbuegy.supabase.co', 'sb_publishable_nfKDb7KXudkpzLPa-nTMtQ_FRW6sQj_');
         let html5QrCode;
+        let isFlashOn = false;
 
         async function initScanner() {
-            document.getElementById('overlay').style.display = 'none';
-            document.getElementById('status-msg').innerText = "Accès caméra...";
-
-            // Configuration pour forcer le scan "Inline" (pas de plein écran)
-            html5QrCode = new Html5Qrcode("reader", { 
-                verbose: false,
-                experimentalFeatures: {
-                    useBarCodeDetectorIfSupported: true 
-                }
-            });
+            const btnToggle = document.getElementById('btn-toggle');
+            btnToggle.disabled = true;
+            
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("reader");
+            }
 
             const config = { 
-                fps: 15, 
-                qrbox: { width: 250, height: 180 },
+                fps: 20, 
+                qrbox: { width: 280, height: 160 },
                 aspectRatio: 1.0,
-                // TRÈS IMPORTANT : Force Safari à rester dans la page
-                videoConstraints: {
-                    facingMode: "environment"
-                }
+                // On active explicitement les formats de codes-barres classiques
+                formatsToSupport: [ 
+                    Html5QrcodeSupportedFormats.EAN_13, 
+                    Html5QrcodeSupportedFormats.EAN_8, 
+                    Html5QrcodeSupportedFormats.CODE_128,
+                    Html5QrcodeSupportedFormats.UPC_A,
+                    Html5QrcodeSupportedFormats.QR_CODE 
+                ]
             };
 
             try {
-                await html5QrCode.start(
-                    { facingMode: "environment" }, 
-                    config, 
-                    (text) => {
-                        document.getElementById('barcode').value = text;
-                        document.getElementById('status-msg').innerHTML = "<span style='color:var(--success-green)'>✅ Produit identifié !</span>";
-                        if(navigator.vibrate) navigator.vibrate(100);
-                    }
-                );
-                document.getElementById('status-msg').innerText = "Scanner prêt : Visez un code-barres";
+                await html5QrCode.start({ facingMode: "environment" }, config, (text) => {
+                    document.getElementById('barcode').value = text;
+                    if(navigator.vibrate) navigator.vibrate(100);
+                    document.getElementById('reader').style.borderColor = "var(--success-green)";
+                });
                 
-                // Correction manuelle pour Safari au cas où
-                const videoElement = document.querySelector('#reader video');
-                if (videoElement) {
-                    videoElement.setAttribute('playsinline', 'true');
-                    videoElement.setAttribute('webkit-playsinline', 'true');
-                }
+                btnToggle.innerText = "ARRÊTER";
+                btnToggle.style.background = "#e74c3c";
+                btnToggle.disabled = false;
+                document.getElementById('btn-flash').style.display = "block";
 
             } catch (err) {
-                console.error(err);
-                document.getElementById('status-msg').innerHTML = "<span style='color:red'>Erreur : Caméra bloquée ou non-HTTPS.</span>";
-                document.getElementById('overlay').style.display = 'flex';
+                alert("Erreur Caméra : " + err);
+                btnToggle.disabled = false;
+            }
+        }
+
+        async function toggleFlash() {
+            try {
+                isFlashOn = !isFlashOn;
+                await html5QrCode.applyVideoConstraints({
+                    advanced: [{ torch: isFlashOn }]
+                });
+            } catch (e) {
+                console.log("Flash non supporté sur cet appareil");
             }
         }
 
         async function enregistrer() {
-            const barcode = document.getElementById('barcode').value;
+            const code = document.getElementById('barcode').value;
             const name = document.getElementById('p-name').value.trim();
-            const cat = document.getElementById('p-cat').value;
             const btn = document.getElementById('btn-save');
 
-            if(!barcode || !name) {
-                alert("Veuillez scanner un code et donner un nom.");
-                return;
-            }
+            if(!code || !name) return alert("Scan et Nom obligatoires !");
 
             btn.disabled = true;
-            btn.innerText = "Enregistrement...";
+            btn.innerText = "⏳...";
 
             const { error } = await _supabase
                 .from('referentiel_produits')
-                .insert([{ code_barre: barcode, nom_standard: name, categorie: cat }]);
+                .insert([{ code_barre: code, nom_standard: name }]);
 
             if(!error) {
-                alert("✅ Produit ajouté avec succès !");
+                alert("✅ Ajouté !");
                 document.getElementById('barcode').value = "";
                 document.getElementById('p-name').value = "";
-                document.getElementById('status-msg').innerText = "Prêt pour le scan suivant...";
+                document.getElementById('reader').style.borderColor = "var(--admin-blue)";
             } else {
-                alert("Erreur: " + error.message);
+                alert("Erreur : " + error.message);
             }
             btn.disabled = false;
-            btn.innerText = "ENREGISTRER AU CATALOGUE";
+            btn.innerText = "ENREGISTRER";
         }
     </script>
 </body>
