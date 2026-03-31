@@ -41,12 +41,31 @@
             border-radius: 15px;
             overflow: hidden;
             background: #000;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             border: 3px solid var(--admin-blue);
             position: relative;
         }
 
-        /* Empêcher Safari de déformer la vidéo */
+        /* Ligne de scan animée */
+        .scan-line {
+            position: absolute;
+            left: 10%;
+            width: 80%;
+            height: 2px;
+            background: rgba(255, 0, 0, 0.7);
+            box-shadow: 0 0 8px 1px red;
+            z-index: 5;
+            top: 50%;
+            display: none; /* Apparaît au démarrage */
+            animation: scanMove 2s infinite ease-in-out;
+        }
+
+        @keyframes scanMove {
+            0% { top: 30%; }
+            50% { top: 70%; }
+            100% { top: 30%; }
+        }
+
         #reader video {
             object-fit: cover !important;
         }
@@ -71,6 +90,18 @@
             cursor: pointer;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
+
+        /* Réglage manuel */
+        .scan-controls {
+            background: #eee;
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .scan-controls label { margin-bottom: 0; flex-shrink: 0; }
 
         .form-group { margin-bottom: 12px; }
 
@@ -120,9 +151,15 @@
         <h1>🛡️ Admin Catalogue</h1>
         
         <div id="reader">
+            <div class="scan-line" id="scan-line"></div>
             <div class="start-overlay" id="overlay">
                 <button class="btn-start" onclick="initScanner()">DÉMARRER LE SCANNER</button>
             </div>
+        </div>
+
+        <div class="scan-controls">
+            <label>Taille Zone :</label>
+            <input type="range" id="zoom-range" min="150" max="350" value="250" step="10" oninput="updateScannerSize(this.value)">
         </div>
 
         <div id="status-msg"></div>
@@ -155,14 +192,14 @@
         const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
         let html5QrCode;
+        let currentSize = 250;
 
         async function chercherInfosProduit(barcode) {
             const statusMsg = document.getElementById('status-msg');
             const nameInput = document.getElementById('p-name');
             
-            statusMsg.innerHTML = "🔍 Recherche dans la base locale...";
+            statusMsg.innerHTML = "🔍 Recherche...";
 
-            // ÉTAPE 1 : Vérifier dans ton Supabase
             const { data, error } = await _supabase
                 .from('referentiel_produits')
                 .select('*')
@@ -176,8 +213,7 @@
                 return;
             }
 
-            // ÉTAPE 2 : Si inconnu, interroger l'API Open Food Facts
-            statusMsg.innerHTML = "🌍 Produit inconnu. Recherche sur le Web...";
+            statusMsg.innerHTML = "🌍 Recherche sur le Web...";
             
             try {
                 const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
@@ -186,37 +222,31 @@
                 if (result.status === 1) {
                     const nomTrouve = result.product.product_name_fr || result.product.product_name || "Produit Web";
                     nameInput.value = nomTrouve;
-                    statusMsg.innerHTML = "<span style='color:var(--success-green)'>✨ Infos trouvées sur le Web !</span>";
+                    statusMsg.innerHTML = "<span style='color:var(--success-green)'>✨ Infos trouvées !</span>";
                 } else {
-                    // ÉTAPE 3 : Plan B (Lien de Scraping manuel pour l'admin de Guinée)
-                    statusMsg.innerHTML = "<span style='color:red'>❌ Inconnu partout.</span>";
-                    const searchUrl = `https://www.jumia.com.gn/catalog/?q=${barcode}`;
-                    statusMsg.innerHTML += ` <a href="${searchUrl}" target="_blank" style="color:blue; font-size:0.7rem;">Chercher sur Jumia ↗️</a>`;
+                    statusMsg.innerHTML = "<span style='color:red'>❌ Inconnu.</span>";
                     nameInput.value = ""; 
                 }
             } catch (e) {
-                statusMsg.innerHTML = "Erreur réseau lors de la recherche.";
+                statusMsg.innerHTML = "Erreur réseau.";
             }
         }
 
-        async function initScanner() {
-            document.getElementById('overlay').style.display = 'none';
-            document.getElementById('status-msg').innerText = "Accès caméra...";
+        async function updateScannerSize(newSize) {
+            currentSize = parseInt(newSize);
+            if (html5QrCode && html5QrCode.isScanning) {
+                // On redémarre rapidement le scanner pour appliquer la nouvelle taille de zone
+                await html5QrCode.stop();
+                startScannerWithConfig();
+            }
+        }
 
-            html5QrCode = new Html5Qrcode("reader", { 
-                verbose: false,
-                experimentalFeatures: {
-                    useBarCodeDetectorIfSupported: true 
-                }
-            });
-
+        async function startScannerWithConfig() {
             const config = { 
-                fps: 15, 
-                qrbox: { width: 250, height: 180 },
+                fps: 20, 
+                qrbox: { width: currentSize, height: Math.round(currentSize * 0.7) }, // Forme rectangulaire pour code-barres
                 aspectRatio: 1.0,
-                videoConstraints: {
-                    facingMode: "environment"
-                }
+                videoConstraints: { facingMode: "environment" }
             };
 
             try {
@@ -229,19 +259,24 @@
                         await chercherInfosProduit(text);
                     }
                 );
+                document.getElementById('scan-line').style.display = 'block';
                 document.getElementById('status-msg').innerText = "Scanner prêt : Visez un code-barres";
-                
-                const videoElement = document.querySelector('#reader video');
-                if (videoElement) {
-                    videoElement.setAttribute('playsinline', 'true');
-                    videoElement.setAttribute('webkit-playsinline', 'true');
-                }
-
             } catch (err) {
                 console.error(err);
-                document.getElementById('status-msg').innerHTML = "<span style='color:red'>Erreur : Caméra bloquée ou non-HTTPS.</span>";
-                document.getElementById('overlay').style.display = 'flex';
+                document.getElementById('status-msg').innerHTML = "<span style='color:red'>Erreur Caméra.</span>";
             }
+        }
+
+        async function initScanner() {
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('status-msg').innerText = "Accès caméra...";
+
+            html5QrCode = new Html5Qrcode("reader", { 
+                verbose: false,
+                experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+            });
+
+            await startScannerWithConfig();
         }
 
         async function enregistrer() {
@@ -263,7 +298,7 @@
                 .insert([{ code_barre: barcode, nom_standard: name, categorie: cat }]);
 
             if(!error) {
-                alert("✅ Produit ajouté avec succès !");
+                alert("✅ Produit ajouté !");
                 document.getElementById('barcode').value = "";
                 document.getElementById('p-name').value = "";
                 document.getElementById('status-msg').innerText = "Prêt pour le scan suivant...";
