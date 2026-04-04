@@ -3,172 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SÉNÉFOUNYI | Adressage GPS</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>HailandX - Accueil Chaleureux</title>
+    
+    <link rel="stylesheet" href="index.css">
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        /* Animation de respiration pour la bulle */
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 0.8; }
-            50% { transform: scale(1.1); opacity: 0.4; }
-            100% { transform: scale(1); opacity: 0.8; }
-        }
-        .pulse-animation { animation: pulse 2s infinite ease-in-out; }
-    </style>
+    <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
-<body class="bg-slate-50 min-h-screen font-sans text-slate-900">
+<body>
 
-    <div class="max-w-xl mx-auto min-h-screen flex flex-col bg-white shadow-2xl relative overflow-hidden">
-        
-        <header class="p-6 flex justify-between items-center border-b border-slate-100">
-            <div>
-                <h1 class="text-2xl font-black tracking-tighter text-slate-900">SÉNÉFOUNYI</h1>
-                <div class="h-1 w-12 bg-green-500 rounded-full"></div>
-            </div>
-            <span class="text-2xl">🇬🇳</span>
-        </header>
+    <div id="ptr-indicator"><span class="ptr-icon">↻</span></div>
 
-        <main class="flex-1 p-6 flex flex-col">
-            <div id="steps" class="flex justify-between mb-8 px-2">
-                <div class="flex flex-col items-center gap-1 opacity-100" id="step1">
-                    <div class="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold">1</div>
-                    <span class="text-[10px] font-bold uppercase">Signal</span>
-                </div>
-                <div class="h-[2px] flex-1 bg-slate-100 mt-5 mx-2"></div>
-                <div class="flex flex-col items-center gap-1 opacity-30" id="step2">
-                    <div class="w-10 h-10 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center font-bold">2</div>
-                    <span class="text-[10px] font-bold uppercase">Infos</span>
-                </div>
-                <div class="h-[2px] flex-1 bg-slate-100 mt-5 mx-2"></div>
-                <div class="flex flex-col items-center gap-1 opacity-30" id="step3">
-                    <div class="w-10 h-10 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center font-bold">3</div>
-                    <span class="text-[10px] font-bold uppercase">Envoi</span>
-                </div>
-            </div>
+    <div class="menu-trigger" onclick="openNav()">☰ Menu</div>
 
-            <div id="radar-container" class="flex-1 flex flex-col items-center justify-center py-10">
-                <div id="accuracy-bubble" class="w-48 h-48 rounded-full bg-slate-100 flex flex-col items-center justify-center relative transition-all duration-500">
-                    <div id="pulse-ring" class="absolute inset-0 rounded-full bg-slate-200 pulse-animation opacity-0"></div>
-                    
-                    <span id="accuracy-icon" class="text-4xl mb-2">📡</span>
-                    <span id="accuracy-value" class="text-sm font-black text-slate-500">Signal GPS...</span>
-                    <p id="accuracy-desc" class="text-[10px] text-slate-400 font-bold uppercase tracking-widest text-center px-4 mt-2">Sortez dehors pour un signal vert</p>
-                </div>
-                
-                <button onclick="startTracking()" id="btn-gps" class="mt-8 bg-slate-900 text-white px-8 py-4 rounded-full font-black text-xs tracking-widest uppercase hover:scale-105 transition-transform active:scale-95 shadow-lg">
-                    Capter ma position
-                </button>
-            </div>
+    <div id="sideNav" class="sidenav">
+      <a class="closebtn" onclick="closeNav()">&times;</a>
+      
+      <div class="menu-header">
+        <p id="display-role">Chargement...</p>
+      </div>
 
-            <div id="form-container" class="hidden space-y-4 animate-in fade-in duration-500">
-                <div class="space-y-4 bg-slate-50 p-6 rounded-[2rem] border-2 border-slate-100">
-                    <div class="relative">
-                        <input type="text" id="nom" placeholder=" " class="peer w-full p-4 bg-white rounded-2xl border-2 border-transparent focus:border-green-500 outline-none transition-all placeholder-transparent">
-                        <label class="absolute left-4 top-4 text-slate-400 pointer-events-none transition-all peer-focus:-top-2 peer-focus:left-3 peer-focus:text-[10px] peer-focus:bg-green-500 peer-focus:text-white peer-focus:px-2 peer-focus:rounded-md peer-[:not(:placeholder-shown)]:-top-2 peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:bg-slate-500 peer-[:not(:placeholder-shown)]:text-white peer-[:not(:placeholder-shown)]:px-2 peer-[:not(:placeholder-shown)]:rounded-md">Nom du Propriétaire</label>
-                    </div>
-                    <div class="relative">
-                        <input type="text" id="quartier" placeholder=" " class="peer w-full p-4 bg-white rounded-2xl border-2 border-transparent focus:border-green-500 outline-none transition-all placeholder-transparent">
-                        <label class="absolute left-4 top-4 text-slate-400 pointer-events-none transition-all peer-focus:-top-2 peer-focus:left-3 peer-focus:text-[10px] peer-focus:bg-green-500 peer-focus:text-white peer-focus:px-2 peer-focus:rounded-md peer-[:not(:placeholder-shown)]:-top-2 peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:bg-slate-500 peer-[:not(:placeholder-shown)]:text-white peer-[:not(:placeholder-shown)]:px-2 peer-[:not(:placeholder-shown)]:rounded-md">Quartier / Commune</label>
-                    </div>
-                </div>
-
-                <button onclick="saveToCloud()" id="btn-send" class="w-full bg-[#009460] text-white font-black py-5 rounded-[2rem] shadow-xl mt-4 opacity-50 cursor-not-allowed transition-all" disabled>
-                    ENREGISTRER LA POSITION
-                </button>
-            </div>
-
-            <div id="success" class="hidden flex-1 flex flex-col items-center justify-center text-center">
-                <div class="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-5xl mb-6 animate-bounce">✓</div>
-                <h2 class="text-3xl font-black text-slate-900 leading-tight">ADRESSE<br>ENREGISTRÉE !</h2>
-                <p class="text-slate-500 mt-4 px-10">Merci de participer au développement de la Guinée.</p>
-                <button onclick="location.reload()" class="mt-10 bg-slate-900 text-white px-10 py-4 rounded-full font-bold">Nouvelle maison</button>
-            </div>
-        </main>
-
-        <footer class="p-6 text-center text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em]">
-            Propulsé par Sénéfounyi © 2026
-        </footer>
+      <div id="special-options">
+      </div>
     </div>
 
+    <div id="main-content">
+    </div>
+
+    <script src="index.js"></script>
+    <script src="config.js"></script>
+    <script src="auth.js"></script>
+
+    <script src="calcul.js"></script>
+    <script src="session.js"></script>
+
+    <script src="shop.js"></script>
+    <script src="buy.js"></script>
+    <script src="livreur.js"></script>
+    <script src="menu.js"></script>
+
+ 
+
     <script>
-        const _supabase = supabase.createClient("https://mxgdthpexmszutqhoawb.supabase.co", "sb_publishable_5Zxd2bCkRABYyBubCNXpdQ_jwZol9Rc");
-        let currentPos = { lat: null, lon: null };
-
-        function startTracking() {
-            document.getElementById('btn-gps').classList.add('hidden');
-            document.getElementById('pulse-ring').classList.remove('opacity-0');
-            
-            navigator.geolocation.watchPosition((pos) => {
-                const acc = Math.round(pos.coords.accuracy);
-                currentPos.lat = pos.coords.latitude;
-                currentPos.lon = pos.coords.longitude;
-
-                const bubble = document.getElementById('accuracy-bubble');
-                const ring = document.getElementById('pulse-ring');
-                const val = document.getElementById('accuracy-value');
-                const desc = document.getElementById('accuracy-desc');
-                const icon = document.getElementById('accuracy-icon');
-
-                // LOGIQUE COULEUR ET TAILLE
-                if (acc > 100) { // PAS PRÉCIS (ROUGE)
-                    updateBubble(bubble, ring, 'bg-red-50', 'bg-red-500', 'text-red-500', 'Mauvais signal', '❌', 'Sortez du bâtiment');
-                    lockForm(true);
-                } else if (acc > 30) { // MOYEN (JAUNE)
-                    updateBubble(bubble, ring, 'bg-yellow-50', 'bg-yellow-400', 'text-yellow-600', acc + 'm', '⚠️', 'Signal moyen... attendez');
-                    lockForm(false); // On autorise le jaune
-                } else { // TRÈS PRÉCIS (VERT)
-                    updateBubble(bubble, ring, 'bg-green-50', 'bg-green-500', 'text-green-600', acc + 'm', '✅', 'Position parfaite !');
-                    lockForm(false);
-                }
-            }, (err) => {
-                alert("Activez votre GPS et rafraîchissez la page.");
-            }, { enableHighAccuracy: true });
-        }
-
-        function updateBubble(b, r, bgColor, ringColor, textColor, text, iconEmoji, description) {
-            b.className = `w-48 h-48 rounded-full flex flex-col items-center justify-center relative transition-all duration-500 ${bgColor}`;
-            r.className = `absolute inset-0 rounded-full pulse-animation ${ringColor}`;
-            document.getElementById('accuracy-value').innerText = text;
-            document.getElementById('accuracy-value').className = `text-lg font-black ${textColor}`;
-            document.getElementById('accuracy-icon').innerText = iconEmoji;
-            document.getElementById('accuracy-desc').innerText = description;
-        }
-
-        function lockForm(isLocked) {
-            const form = document.getElementById('form-container');
-            const step2 = document.getElementById('step2');
-            if(!isLocked) {
-                form.classList.remove('hidden');
-                step2.classList.replace('opacity-30', 'opacity-100');
-                step2.querySelector('div').classList.replace('bg-slate-200', 'bg-slate-900');
-                step2.querySelector('div').classList.replace('text-slate-50', 'text-white');
-                document.getElementById('btn-send').disabled = false;
-                document.getElementById('btn-send').classList.replace('opacity-50', 'opacity-100');
-                document.getElementById('btn-send').classList.remove('cursor-not-allowed');
+        window.onload = () => {
+            // Cette fonction vient de auth.js et vérifie si l'utilisateur est déjà connecté
+            if (typeof afficherAccueil === "function") {
+                afficherAccueil();
             }
-        }
-
-        async function saveToCloud() {
-            const nom = document.getElementById('nom').value;
-            const quartier = document.getElementById('quartier').value;
-
-            if(!nom || !currentPos.lat) return alert("Entrez le nom du propriétaire");
-
-            document.getElementById('btn-send').innerText = "ENVOI EN COURS...";
-            document.getElementById('step3').classList.replace('opacity-30', 'opacity-100');
-
-            const { error } = await _supabase.from('recensement').insert([{ 
-                nom, quartier, latitude: currentPos.lat, longitude: currentPos.lon 
-            }]);
-
-            if (!error) {
-                document.getElementById('radar-container').classList.add('hidden');
-                document.getElementById('form-container').classList.add('hidden');
-                document.getElementById('steps').classList.add('hidden');
-                document.getElementById('success').classList.remove('hidden');
-            }
-        }
+        };
     </script>
+        
 </body>
 </html>
-
