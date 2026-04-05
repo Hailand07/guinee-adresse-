@@ -579,3 +579,12 @@
             border: 1px solid #ddd;
             box-sizing: border-box;
         }
+.menu-trigger {
+    background: none;
+    border: none;
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+    /* Ajoute ici tes styles personnalisés pour le positionnement */
+}
+
