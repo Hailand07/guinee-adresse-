@@ -12,42 +12,43 @@
 </head>
 <body>
 
-    <div id="ptr-indicator" aria-hidden="true"><span class="ptr-icon">↻</span></div>
+    <div id="ptr-indicator"><span class="ptr-icon">↻</span></div>
 
-    <button class="menu-trigger" onclick="openNav()" aria-label="Ouvrir le menu">☰ Menu</button>
+    <button class="menu-trigger" onclick="openNav()">☰ Menu</button>
 
-    <nav id="sideNav" class="sidenav">
-      <a href="javascript:void(0)" class="closebtn" onclick="closeNav()" aria-label="Fermer">&times;</a>
+    <div id="sideNav" class="sidenav">
+      <a class="closebtn" onclick="closeNav()" aria-label="Fermer le menu">&times;</a>
       
       <div class="menu-header">
         <p id="display-role">Chargement...</p>
       </div>
 
-      <div id="special-options"></div>
-    </nav>
+      <div id="special-options">
+      </div>
+    </div>
 
-    <main id="main-content">
-        </main>
+    <div id="main-content">
+    </div>
 
+    <script src="index.js"></script>
     <script src="config.js"></script>
-    <script src="calcul.js"></script>
+
+    <script src="menu.js"></script>
 
     <script src="auth.js"></script>
+    <script src="calcul.js"></script>
     <script src="session.js"></script>
+
     <script src="shop.js"></script>
     <script src="buy.js"></script>
     <script src="livreur.js"></script>
-    <script src="menu.js"></script>
-
-    <script src="index.js"></script>
 
     <script>
-        // Utilisation de DOMContentLoaded plutôt que window.onload pour plus de rapidité
-        document.addEventListener("DOMContentLoaded", () => {
+        window.onload = () => {
             if (typeof afficherAccueil === "function") {
                 afficherAccueil();
             }
-        });
+        };
     </script>
         
 </body>
