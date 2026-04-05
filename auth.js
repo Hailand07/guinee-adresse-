@@ -16,7 +16,7 @@ function afficherAccueil() {
 
             container.innerHTML = `
                 <section class="hero">
-                    <h1>HailandX : L'économie de demain, aujourd'hui.</h1>
+                    <h1>HailandX : L'économie de demain.</h1>
                     <p>La plateforme tout-en-un qui connecte les Guinéens. Que vous soyez acheteur, commerçant ou partenaire logistique, nous créons les opportunités qui font grandir votre quotidien.</p>
                     <div class="scroll-indicator">↓</div>
                 </section>
