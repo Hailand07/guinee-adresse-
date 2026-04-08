@@ -1,20 +1,26 @@
-// Initialisation de Supabase
-const supabaseUrl = 'https://plisyaquijijmwbbuegy.supabase.co';
-const supabaseKey = 'sb_publishable_nfKDb7KXudkpzLPa-nTMtQ_FRW6sQj_';
-const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+import { renderBoutique } from './BoutiqueScreen.js';
 
-// Importation logique des fonctions (si tu utilises des modules)
-// Dans une version HTML simple, on s'assure que tous les scripts sont chargés dans le fichier index.html
+// Initialisation
+const supabaseUrl = 'https://plisyaquijijmwbbuegy.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'; // Ta clé anon complète
+
+// Utilisation de l'objet global chargé via le script CDN dans le HTML
+const { createClient } = supabase;
+window.supabase = createClient(supabaseUrl, supabaseKey);
 
 async function chargerBoutique() {
-    // Récupérer les produits depuis Supabase
-    let { data: products, error } = await supabase
+    console.log("Connexion à Supabase...");
+    let { data: products, error } = await window.supabase
         .from('products')
         .select('*');
 
-    if (error) console.log("Erreur de chargement:", error);
-    else afficherProduits(products); // Cette fonction sera dans ton BoutiqueScreen
+    if (error) {
+        console.error("Erreur de chargement:", error);
+    } else {
+        // C'est ici qu'on appelle la fonction de ton BoutiqueScreen.js
+        renderBoutique(products); 
+    }
 }
 
 // Lancer au chargement de la page
-window.onload = chargerBoutique;
+window.addEventListener('DOMContentLoaded', chargerBoutique);
