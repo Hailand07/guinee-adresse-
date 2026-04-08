@@ -1,49 +1,70 @@
-import React, { useState } from 'react';
-import { View, FlatList, TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { ProductCard } from './ProductCard';
-import { processSale } from './CartLogic';
+import { createProductCard } from './index.js';
+import { processSale } from './CartLogic.js';
 
-export const BoutiqueScreen = ({ products }) => {
-  const [cart, setCart] = useState([]);
+// Le panier est stocké dans une variable globale pour cette session
+let cart = [];
 
-  const handleAddToVente = (product) => {
-    setCart([...cart, { ...product, quantity: 1 }]);
-  };
-
-  const finalizeSale = () => {
-    const finalAmount = processSale(cart);
-    // Ici on enverra vers Supabase plus tard
-    setCart([]); // Vider le panier après vente
-  };
-
-  return (
-    <View style={styles.container}>
-      {/* Grille des produits */}
-      <FlatList
-        data={products}
-        numColumns={2}
-        renderItem={({ item }) => (
-          <ProductCard 
-            item={item} 
-            onAdd={handleAddToVente} 
-            onLongPress={(item) => console.log("Menu quantité pour", item.name)} 
-          />
-        )}
-        keyExtractor={item => item.id}
-      />
-
-      {/* Le gros bouton VENDRE en bas */}
-      {cart.length > 0 && (
-        <TouchableOpacity style={styles.sellButton} onPress={finalizeSale}>
-          <Text style={styles.sellButtonText}>VENDRE</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
+/**
+ * Affiche la grille des produits dans le conteneur HTML.
+ * @param {Array} products - La liste des produits venant de Supabase.
+ */
+export const renderBoutique = (products) => {
+    const gridContainer = document.getElementById('grid-container');
+    
+    // Générer le HTML pour chaque produit
+    gridContainer.innerHTML = products.map(item => createProductCard(item)).join('');
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  sellButton: { backgroundColor: '#4CD964', padding: 25, margin: 20, borderRadius: 20, alignItems: 'center' },
-  sellButtonText: { color: '#FFF', fontSize: 28, fontWeight: '900' }
-});
+/**
+ * Gère l'ajout d'un produit au panier (appelée par onclick dans index.js)
+ */
+window.handleAddToCart = (productId) => {
+    // Note : On récupère les infos du produit (simplifié ici)
+    cart.push({ id: productId, quantity: 1 });
+    
+    // Faire vibrer légèrement pour confirmer l'ajout
+    if (navigator.vibrate) navigator.vibrate(50);
+    
+    updateSellButton();
+    console.log("Panier actuel:", cart);
+};
+
+/**
+ * Gère l'appui long (menu contextuel)
+ */
+window.handleLongPress = (productId) => {
+    const qty = prompt("Quantité souhaitée ?", "1");
+    if (qty) {
+        cart.push({ id: productId, quantity: parseInt(qty) });
+        updateSellButton();
+    }
+};
+
+/**
+ * Affiche ou cache le bouton VENDRE selon le contenu du panier
+ */
+const updateSellButton = () => {
+    const btnVendre = document.getElementById('btn-vendre');
+    if (cart.length > 0) {
+        btnVendre.style.display = 'block';
+        btnVendre.innerHTML = `VENDRE (${cart.length} articles)`;
+    } else {
+        btnVendre.style.display = 'none';
+    }
+};
+
+/**
+ * Finalise la vente
+ */
+window.finalizeSale = () => {
+    if (cart.length === 0) return;
+
+    // Appel à la logique de vibration et de voix que nous avons créée
+    // Note : Dans un cas réel, on passerait les vrais prix ici
+    processSale(cart);
+
+    // Vider le panier et mettre à jour l'interface
+    cart = [];
+    updateSellButton();
+    alert("Vente enregistrée !");
+};
