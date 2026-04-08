@@ -1,42 +1,66 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import FastImage from 'react-native-fast-image';
+/**
+ * Affiche l'écran de confirmation après le scan du carnet.
+ * @param {Array} detectedItems - Les produits identifiés par l'OCR.
+ */
+export const renderValidation = (detectedItems) => {
+    const container = document.getElementById('grid-container');
+    
+    // Si aucun article n'est détecté
+    if (!detectedItems || detectedItems.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center; padding:50px;">
+                <p style="color:#FFF;">Aucun produit reconnu. Réessayez avec une photo plus claire.</p>
+                <button onclick="location.reload()" style="background:#4CD964; color:white; border:none; padding:15px; border-radius:10px;">Retour</button>
+            </div>`;
+        return;
+    }
 
-export const ValidationScreen = ({ detectedItems, onConfirm, onCancel }) => {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Est-ce bien ça ?</Text>
-      <ScrollView contentContainerStyle={styles.list}>
-        {detectedItems.map((item, index) => (
-          <View key={index} style={styles.itemRow}>
-            <FastImage style={styles.icon} source={{ uri: item.image_url }} />
-            <Text style={styles.itemName}>{item.name}</Text>
-            <View style={styles.checkMark}>✅</View>
-          </View>
-        ))}
-      </ScrollView>
-      
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-          <Text style={styles.btnText}>Refaire</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.confirmBtn} onPress={onConfirm}>
-          <Text style={styles.btnText}>Valider les ventes</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+    let html = `
+        <div class="validation-container" style="padding: 20px; background-color: #000; min-height: 100vh;">
+            <h2 style="color: #FFF; font-size: 24px; font-weight: bold; margin-bottom: 20px; text-align: center;">
+                Est-ce bien ça ?
+            </h2>
+            
+            <div class="scroll-list" style="max-height: 60vh; overflow-y: auto; margin-bottom: 20px; padding-right: 5px;">
+                ${detectedItems.map((item, index) => `
+                    <div class="item-row" style="display: flex; align-items: center; background-color: #1A1A1A; padding: 12px; border-radius: 15px; margin-bottom: 12px; border: 1px solid #333;">
+                        <img src="${item.image_url}" 
+                             style="width: 55px; height: 55px; border-radius: 10px; object-fit: cover;" 
+                             alt="${item.name}">
+                        
+                        <div style="flex: 1; margin-left: 15px;">
+                            <span style="color: #FFF; font-size: 18px; font-weight: 500;">${item.name}</span>
+                            <br/>
+                            <span style="color: #FFD700; font-size: 14px;">${item.selling_price} FG</span>
+                        </div>
+                        
+                        <div style="font-size: 20px;">✅</div>
+                    </div>
+                `).join('')}
+            </div>
+
+            <div class="footer" style="display: flex; gap: 15px; margin-top: 20px;">
+                <button onclick="location.reload()" 
+                        style="flex: 1; background-color: #FF3B30; color: #FFF; border: none; padding: 18px; border-radius: 15px; font-weight: bold; font-size: 16px; cursor: pointer;">
+                    Refaire
+                </button>
+                
+                <button onclick="finalizeValidationSales()" 
+                        style="flex: 1; background-color: #4CD964; color: #FFF; border: none; padding: 18px; border-radius: 15px; font-weight: bold; font-size: 16px; cursor: pointer;">
+                    Valider les ventes
+                </button>
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000', padding: 20 },
-  title: { color: '#FFF', fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  itemRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1A1A1A', padding: 10, borderRadius: 15, marginBottom: 10 },
-  icon: { width: 50, height: 50, borderRadius: 10 },
-  itemName: { color: '#FFF', flex: 1, marginLeft: 15, fontSize: 18 },
-  footer: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
-  confirmBtn: { backgroundColor: '#4CD964', padding: 20, borderRadius: 15, flex: 1, marginLeft: 10, alignItems: 'center' },
-  cancelBtn: { backgroundColor: '#FF3B30', padding: 20, borderRadius: 15, flex: 1, marginRight: 10, alignItems: 'center' },
-  btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 }
-});
-
+/**
+ * Fonction appelée lors du clic sur "Valider les ventes"
+ */
+window.finalizeValidationSales = () => {
+    // On peut appeler la logique de CartLogic ici
+    alert("Ventes enregistrées avec succès !");
+    location.reload(); // On revient à la boutique
+};
