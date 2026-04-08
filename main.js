@@ -1,6 +1,6 @@
 // Initialisation de Supabase
-const supabaseUrl = 'TON_URL_SUPABASE';
-const supabaseKey = 'TA_CLE_ANON_SUPABASE';
+const supabaseUrl = 'https://plisyaquijijmwbbuegy.supabase.co';
+const supabaseKey = 'sb_publishable_nfKDb7KXudkpzLPa-nTMtQ_FRW6sQj_';
 const supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
 // Importation logique des fonctions (si tu utilises des modules)
