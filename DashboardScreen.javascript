@@ -1,44 +1,43 @@
-import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
-import { VictoryBar, VictoryChart, VictoryAxis } from 'victory-native';
-import FastImage from 'react-native-fast-image';
+/**
+ * Affiche le Dashboard des ventes avec des barres graphiques et des icônes.
+ * @param {Array} rotationStats - Les données triées venant de AnalyticsService.
+ */
+export const renderDashboard = (rotationStats) => {
+    const container = document.getElementById('grid-container'); // On réutilise le conteneur principal
+    const topProducts = rotationStats.slice(0, 5); // On prend les 5 meilleurs
+    
+    // Calculer la valeur maximale pour l'échelle du graphique
+    const maxSales = Math.max(...topProducts.map(p => p.count), 1);
 
-export const DashboardScreen = ({ rotationStats }) => {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.headerText}>Mes Meilleures Ventes</Text>
-      
-      <VictoryChart 
-        domainPadding={20} 
-        width={Dimensions.get('window').width - 40}
-        theme={{ axis: { style: { tickLabels: { fill: 'transparent' } } } }} // On cache le texte
-      >
-        <VictoryBar
-          data={rotationStats.slice(0, 5)} // Top 5 produits
-          x="name"
-          y="count"
-          style={{ data: { fill: "#4CD964" } }}
-        />
-        <VictoryAxis />
-      </VictoryChart>
+    let html = `
+        <div class="dashboard-container" style="padding: 20px; background-color: #000;">
+            <h2 style="color: #FFF; font-size: 20px; font-weight: bold; margin-bottom: 20px;">
+                Mes Meilleures Ventes
+            </h2>
+            
+            <div class="chart-area" style="display: flex; align-items: flex-end; justify-content: space-around; height: 200px; padding-bottom: 10px; border-bottom: 1px solid #333;">
+                ${topProducts.map(product => {
+                    const barHeight = (product.count / maxSales) * 100;
+                    return `
+                        <div class="bar-group" style="display: flex; flex-direction: column; align-items: center; width: 50px;">
+                            <span style="color: #4CD964; font-size: 12px; font-weight: bold; margin-bottom: 5px;">${product.count}</span>
+                            <div class="bar" style="width: 30px; height: ${barHeight}%; background-color: #4CD964; border-radius: 5px 5px 0 0; transition: height 1s ease-out;"></div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
 
-      {/* Légende avec Photos à la place du texte */}
-      <View style={styles.iconLegend}>
-        {rotationStats.slice(0, 5).map((product, index) => (
-          <FastImage 
-            key={index}
-            source={{ uri: product.image_url }} 
-            style={styles.legendIcon} 
-          />
-        ))}
-      </View>
-    </View>
-  );
+            <div class="icon-legend" style="display: flex; justify-content: space-around; margin-top: 15px;">
+                ${topProducts.map(product => `
+                    <div style="width: 50px; display: flex; justify-content: center;">
+                        <img src="${product.image}" 
+                             style="width: 40px; height: 40px; border-radius: 8px; border: 1px solid #444; object-fit: cover;" 
+                             alt="${product.name}">
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
 };
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000', padding: 20 },
-  headerText: { color: '#FFF', fontSize: 20, fontWeight: 'bold', marginBottom: 10 },
-  iconLegend: { flexDirection: 'row', justifyContent: 'space-around', marginTop: -20 },
-  legendIcon: { width: 40, height: 40, borderRadius: 5, borderWay: 1, borderColor: '#444' }
-});
