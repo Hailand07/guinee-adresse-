@@ -648,7 +648,222 @@ body {
   box-shadow:var(--shadow); display:none;
   animation:fadeUp .3s ease;
 }
+
+/* ══════════════════════════════════
+   BOUTIQUIER – ONGLETS & DASHBOARD
+══════════════════════════════════ */
+.b-tabs {
+  display:flex; gap:6px; padding:0 0 20px 0; overflow-x:auto; scrollbar-width:none;
+}
+.b-tabs::-webkit-scrollbar { display:none; }
+.b-tab {
+  display:flex; align-items:center; gap:7px;
+  padding:10px 18px; border-radius:50px; border:2px solid var(--border);
+  background:var(--surface); color:var(--muted); font-weight:700; font-size:.85rem;
+  cursor:pointer; transition:var(--transition); white-space:nowrap; flex-shrink:0;
+}
+.b-tab.active { background:var(--brand); border-color:var(--brand); color:#fff; }
+.b-tab:hover:not(.active) { border-color:var(--brand); color:var(--brand); }
+
+/* KPI Cards */
+.kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
+.kpi-card {
+  background:var(--surface); border-radius:var(--radius); padding:18px;
+  border:1.5px solid var(--border); box-shadow:var(--shadow);
+  display:flex; flex-direction:column; gap:6px; position:relative; overflow:hidden;
+  transition:var(--transition);
+}
+.kpi-card:hover { transform:translateY(-3px); box-shadow:var(--shadow-lg); }
+.kpi-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+.kpi-card.green::before { background:var(--brand); }
+.kpi-card.orange::before { background:var(--accent); }
+.kpi-card.red::before { background:#EF4444; }
+.kpi-card.blue::before { background:var(--info); }
+.kpi-icon { font-size:1.8rem; }
+.kpi-val { font-family:'Sora',sans-serif; font-size:1.5rem; font-weight:800; line-height:1; }
+.kpi-label { font-size:.72rem; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.4px; }
+.kpi-sub { font-size:.75rem; font-weight:700; }
+.kpi-sub.pos { color:var(--brand); }
+.kpi-sub.neg { color:#EF4444; }
+
+/* Charts */
+.charts-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+@media(max-width:600px) { .charts-row { grid-template-columns:1fr; } }
+.chart-card {
+  background:var(--surface); border-radius:var(--radius); padding:20px;
+  border:1.5px solid var(--border); box-shadow:var(--shadow);
+}
+.chart-title { font-size:.78rem; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:14px; }
+
+/* Stock jauges */
+.stock-jauge-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; margin-bottom:20px; }
+.sj-item {
+  background:var(--surface); border-radius:var(--radius-sm); padding:14px;
+  border:1.5px solid var(--border); transition:var(--transition);
+}
+.sj-item:hover { border-color:var(--brand); }
+.sj-top { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.sj-emoji { font-size:1.6rem; }
+.sj-name { font-weight:800; font-size:.88rem; line-height:1.2; }
+.sj-qty { font-size:.73rem; color:var(--muted); }
+.jauge { height:8px; background:var(--border); border-radius:99px; overflow:hidden; }
+.jauge-fill { height:100%; border-radius:99px; transition:width .6s ease; }
+.jauge-fill.high { background:var(--brand); }
+.jauge-fill.mid { background:var(--accent); }
+.jauge-fill.low { background:#EF4444; animation:blink-red 1.4s infinite; }
+@keyframes blink-red { 0%,100%{opacity:1} 50%{opacity:.35} }
+.rupture-tag { font-size:.68rem; font-weight:800; color:#EF4444; margin-top:5px; }
+
+/* Prédictions */
+.predict-card {
+  display:flex; align-items:center; gap:12px;
+  background:var(--surface); border-radius:var(--radius-sm); padding:14px;
+  border:1.5px solid var(--border); margin-bottom:10px;
+  animation:fadeUp .3s ease;
+}
+.predict-icon { font-size:1.8rem; flex-shrink:0; }
+.predict-info { flex:1; }
+.predict-name { font-weight:800; font-size:.9rem; }
+.predict-reason { font-size:.75rem; color:var(--muted); margin-top:2px; }
+.predict-badge {
+  padding:4px 10px; border-radius:50px; font-size:.7rem; font-weight:800;
+  white-space:nowrap;
+}
+.predict-badge.urgent { background:#FEE2E2; color:#EF4444; }
+.predict-badge.soon { background:rgba(247,183,49,.15); color:#F59E0B; }
+
+/* ── GRILLE DE VENTE TACTILE (Plan C) ── */
+.vente-layout { display:grid; grid-template-columns:1fr 340px; gap:20px; align-items:start; }
+@media(max-width:900px) { .vente-layout { grid-template-columns:1fr; } }
+
+.vente-search { position:relative; margin-bottom:14px; }
+.vente-search input {
+  width:100%; padding:13px 16px 13px 44px;
+  border:2px solid var(--border); border-radius:50px;
+  font-family:inherit; font-size:.95rem; outline:none;
+  background:var(--surface); transition:var(--transition);
+}
+.vente-search input:focus { border-color:var(--brand); }
+.vente-search-icon { position:absolute; left:15px; top:50%; transform:translateY(-50%); font-size:1.1rem; color:var(--muted); }
+
+.cat-filter-row { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:14px; }
+.cat-chip {
+  padding:6px 14px; border-radius:50px; border:1.5px solid var(--border);
+  background:var(--surface); color:var(--muted); font-weight:700; font-size:.78rem;
+  cursor:pointer; transition:var(--transition); white-space:nowrap;
+}
+.cat-chip.active,.cat-chip:hover { background:var(--brand); border-color:var(--brand); color:#fff; }
+
+.prod-vente-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; }
+.pv-tile {
+  background:var(--surface); border:2px solid var(--border); border-radius:var(--radius);
+  padding:14px 10px; text-align:center; cursor:pointer; transition:var(--transition);
+  position:relative; user-select:none;
+}
+.pv-tile:hover { border-color:var(--brand); transform:translateY(-3px); box-shadow:var(--shadow); }
+.pv-tile:active { transform:scale(.96); }
+.pv-tile.in-cart { border-color:var(--brand); background:rgba(0,200,81,.06); }
+.pv-emoji { font-size:2.2rem; margin-bottom:8px; }
+.pv-name { font-size:.8rem; font-weight:800; line-height:1.2; margin-bottom:4px; }
+.pv-price { font-size:.82rem; color:var(--brand); font-weight:900; font-family:'Sora',sans-serif; }
+.pv-stock-low { position:absolute; top:6px; right:6px; background:#EF4444; color:#fff; font-size:.6rem; font-weight:800; padding:2px 6px; border-radius:50px; }
+.pv-cart-badge { position:absolute; top:-6px; left:-6px; width:22px; height:22px; border-radius:50%; background:var(--brand); color:#fff; font-size:.72rem; font-weight:900; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(0,200,81,.4); }
+
+/* Panier */
+.panier-box {
+  background:var(--surface); border:1.5px solid var(--border); border-radius:var(--radius);
+  padding:20px; position:sticky; top:120px; box-shadow:var(--shadow);
+}
+.panier-title { font-family:'Sora',sans-serif; font-size:1rem; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+.panier-count { background:var(--brand); color:#fff; border-radius:50px; padding:2px 10px; font-size:.78rem; font-weight:800; }
+.panier-list { display:flex; flex-direction:column; gap:8px; max-height:280px; overflow-y:auto; margin-bottom:14px; scrollbar-width:thin; }
+.panier-item { display:flex; align-items:center; gap:10px; background:var(--surface2); border-radius:var(--radius-sm); padding:10px; }
+.panier-item-emoji { font-size:1.3rem; }
+.panier-item-info { flex:1; }
+.panier-item-name { font-size:.82rem; font-weight:800; }
+.panier-item-price { font-size:.75rem; color:var(--brand); font-weight:700; }
+.qty-ctrl { display:flex; align-items:center; gap:5px; }
+.qty-btn {
+  width:24px; height:24px; border-radius:50%; border:1.5px solid var(--border);
+  background:var(--surface); display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-weight:800; font-size:.9rem; transition:var(--transition);
+}
+.qty-btn:hover { background:var(--brand); border-color:var(--brand); color:#fff; }
+.qty-num { font-weight:800; min-width:16px; text-align:center; font-size:.85rem; }
+
+.total-zone {
+  background:var(--surface2); border-radius:var(--radius-sm); padding:14px;
+  text-align:center; margin-bottom:12px;
+}
+.total-label { font-size:.72rem; color:var(--muted); font-weight:700; text-transform:uppercase; }
+.total-val { font-family:'Sora',sans-serif; font-size:1.9rem; color:var(--brand); font-weight:800; }
+.vocal-btn {
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  background:none; border:none; color:var(--info); font-size:.78rem; font-weight:700;
+  cursor:pointer; margin-top:4px; width:100%; transition:var(--transition);
+}
+.vocal-btn:hover { color:var(--brand); }
+
+.btn-vendre-big {
+  width:100%; padding:16px; border-radius:var(--radius); border:none;
+  background:linear-gradient(135deg,var(--brand),#00a040);
+  color:#fff; font-family:'Sora',sans-serif; font-size:1.3rem; font-weight:800;
+  cursor:pointer; transition:var(--transition);
+  box-shadow:0 8px 24px rgba(0,200,81,.3);
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.btn-vendre-big:hover { transform:translateY(-2px); box-shadow:0 12px 32px rgba(0,200,81,.4); }
+.btn-vendre-big:active { transform:scale(.97); }
+.btn-clear-panier {
+  width:100%; padding:10px; border-radius:var(--radius-sm); border:1.5px solid var(--border);
+  background:none; color:var(--muted); font-family:inherit; font-weight:700;
+  cursor:pointer; margin-top:8px; transition:var(--transition);
+}
+.btn-clear-panier:hover { border-color:#EF4444; color:#EF4444; }
+.panier-empty-msg { text-align:center; color:var(--muted); padding:24px 0; font-size:.9rem; }
+
+/* OCR Zone */
+.ocr-drop {
+  background:var(--surface2); border:2px dashed var(--border); border-radius:var(--radius);
+  padding:40px 24px; text-align:center; cursor:pointer; transition:var(--transition);
+  margin-bottom:16px;
+}
+.ocr-drop:hover { border-color:var(--brand); background:var(--brand-glow); }
+.ocr-drop-icon { font-size:3rem; margin-bottom:10px; }
+.ocr-drop-label { font-weight:800; font-size:1rem; margin-bottom:4px; }
+.ocr-drop-sub { font-size:.82rem; color:var(--muted); }
+.ocr-preview img { width:100%; border-radius:var(--radius-sm); margin-bottom:16px; }
+.ocr-result-item {
+  display:flex; align-items:center; gap:12px;
+  background:var(--surface); border:1.5px solid var(--border); border-radius:var(--radius-sm);
+  padding:14px; margin-bottom:10px; animation:fadeUp .3s ease;
+}
+.ocr-chk {
+  width:28px; height:28px; border-radius:50%; border:2px solid var(--border);
+  background:var(--surface); display:flex; align-items:center; justify-content:center;
+  cursor:pointer; transition:var(--transition); font-size:.9rem; flex-shrink:0;
+}
+.ocr-chk.checked { background:var(--brand); border-color:var(--brand); color:#fff; }
+
+/* Modal Vente Confirmation */
+.modal-vente-overlay {
+  position:fixed; inset:0; background:var(--overlay); z-index:7000;
+  display:flex; align-items:flex-end; justify-content:center;
+  backdrop-filter:blur(6px); animation:fadeIn .2s ease;
+}
+.modal-vente-box {
+  background:var(--surface); border-radius:var(--radius) var(--radius) 0 0;
+  padding:28px 24px 40px; width:100%; max-width:480px;
+  animation:slideUp .35s ease;
+}
+.modal-vente-title { font-family:'Sora',sans-serif; font-size:1.2rem; margin-bottom:12px; }
+.modal-vente-lines { background:var(--surface2); border-radius:var(--radius-sm); padding:14px; margin-bottom:16px; font-size:.85rem; line-height:1.9; }
+.modal-vente-total { font-family:'Sora',sans-serif; font-size:2rem; color:var(--brand); font-weight:800; text-align:center; margin-bottom:20px; }
+.modal-vente-btns { display:flex; gap:10px; }
+
 </style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 
 </head>
 <body>
@@ -1756,657 +1971,876 @@ async function inscriptionCommerçant(role) {
   updateMenu();
 }
 
-// ════════════════════════════════════════════════════
-// INTERFACE GROSSISTE
-// ════════════════════════════════════════════════════
-function afficherInterfaceGrossiste() {
-  stopGPS();
-  const name = sess('hx_name') || 'Mon Entreprise';
-  document.getElementById('main-content').innerHTML = `
-    <div class="supplier-dash">
-      <div class="dash-header">
-        <div class="dash-header-left">
-          <h2>📦 Grossiste</h2>
-          <p>🏢 ${sanitize(name)}</p>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="afficherPortailFournisseur()">← Retour</button>
-      </div>
-      <div class="dash-layout">
-        <div>
-          <div class="dash-panel" style="margin-bottom:20px">
-            <h3>➕ Ajouter un lot</h3>
-            <div class="form-group">
-              <label>Désignation du lot</label>
-              <input type="text" id="g-nom" placeholder="Ex: Carton de lait Gloria x48"/>
-            </div>
-            <div class="form-group">
-              <label>Prix unitaire (GNF)</label>
-              <input type="number" id="g-prix" placeholder="Ex: 180000" min="100"/>
-            </div>
-            <div class="form-group">
-              <label>Quantité disponible</label>
-              <input type="number" id="g-qte" placeholder="Ex: 50" min="1"/>
-            </div>
-            <div class="form-group">
-              <label>Catégorie</label>
-              <select id="g-cat">
-                <option>Alimentation</option><option>Boissons</option><option>Hygiène</option>
-                <option>Électronique</option><option>Textile</option><option>Divers</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Zone de stockage</label>
-              <select id="g-zone">
-                <option>Kaloum</option><option>Dixinn</option><option>Ratoma</option><option>Matam</option><option>Matoto</option>
-              </select>
-            </div>
-            <button class="btn btn-brand btn-full" id="g-btn-pub" onclick="ajouterLotGrossiste()">✅ Publier le lot</button>
-          </div>
-        </div>
-        <div>
-          <div class="dash-panel">
-            <h3>📦 Mes lots en stock</h3>
-            <div id="g-inventory"><div class="spinner-wrap"><div class="spinner"></div></div></div>
-          </div>
-        </div>
-      </div>
-    </div>`;
-  chargerLotsGrossiste();
-}
-
-async function ajouterLotGrossiste() {
-  const nom  = document.getElementById('g-nom')?.value?.trim();
-  const prix = parseInt(document.getElementById('g-prix')?.value);
-  const qte  = parseInt(document.getElementById('g-qte')?.value);
-  const cat  = document.getElementById('g-cat')?.value;
-  const zone = document.getElementById('g-zone')?.value;
-  const tel  = sess('hx_phone');
-
-  if(!nom || isNaN(prix) || prix < 100 || isNaN(qte) || qte < 1) {
-    toast('Remplissez tous les champs correctement','warn'); return;
-  }
-  const btn = document.getElementById('g-btn-pub');
-  if(btn) { btn.disabled=true; btn.textContent='⏳...'; }
-
-  const { error } = await _sb.from('lots_grossistes').insert([{
-    designation: nom, prix_unitaire: prix, quantite: qte,
-    categorie: cat, zone, grossiste_contact: tel,
-    created_at: new Date().toISOString()
-  }]);
-
-  if(error) { toast('Erreur: '+error.message,'error'); }
-  else {
-    document.getElementById('g-nom').value='';
-    document.getElementById('g-prix').value='';
-    document.getElementById('g-qte').value='';
-    toast('✅ Lot publié !','success');
-    chargerLotsGrossiste();
-  }
-  if(btn) { btn.disabled=false; btn.textContent='✅ Publier le lot'; }
-}
-
-async function chargerLotsGrossiste() {
-  const cont = document.getElementById('g-inventory');
-  if(!cont) return;
-  const tel = sess('hx_phone');
-  const { data, error } = await _sb.from('lots_grossistes').select('*')
-    .eq('grossiste_contact',tel).order('created_at',{ascending:false});
-
-  if(error||!data||data.length===0) {
-    cont.innerHTML=`<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">Aucun lot</div><div class="empty-sub">Ajoutez votre premier lot.</div></div>`;
-    return;
-  }
-  cont.innerHTML = data.map(l=>`
-    <div class="inv-item">
-      <div class="inv-item-icon">📦</div>
-      <div class="inv-item-info">
-        <div class="inv-item-name">${sanitize(l.designation)}</div>
-        <div class="inv-item-sub">${sanitize(l.categorie||'')} · Qté: ${l.quantite} · ${sanitize(l.zone||'')}</div>
-      </div>
-      <div class="inv-item-price">${Number(l.prix_unitaire).toLocaleString('fr-FR')} GNF</div>
-      <button class="inv-del-btn" onclick="supprimerLotGrossiste('${sanitize(l.id)}')">✕</button>
-    </div>`).join('');
-}
-
-async function supprimerLotGrossiste(id) {
-  const ok = await hxDialog({ title:'Supprimer ce lot ?', msg:'Cette action est irréversible.', confirm:'Supprimer' });
-  if(!ok) return;
-  const { error } = await _sb.from('lots_grossistes').delete().eq('id',id);
-  if(error) { toast('Erreur: '+error.message,'error'); return; }
-  toast('Lot supprimé','success');
-  chargerLotsGrossiste();
-}
-
-// ════════════════════════════════════════════════════
-// INTERFACE IMPORTATEUR
-// ════════════════════════════════════════════════════
-function afficherInterfaceImportateur() {
-  stopGPS();
-  const name = sess('hx_name') || 'Ma Société';
-  document.getElementById('main-content').innerHTML = `
-    <div class="supplier-dash">
-      <div class="dash-header">
-        <div class="dash-header-left">
-          <h2>🚢 Importateur</h2>
-          <p>🌍 ${sanitize(name)}</p>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="afficherPortailFournisseur()">← Retour</button>
-      </div>
-      <div class="dash-layout">
-        <div>
-          <div class="dash-panel" style="margin-bottom:20px">
-            <h3>➕ Déclarer une cargaison</h3>
-            <div class="form-group">
-              <label>Désignation de la cargaison</label>
-              <input type="text" id="i-nom" placeholder="Ex: Container riz basmati 20T"/>
-            </div>
-            <div class="form-group">
-              <label>Pays d'origine</label>
-              <input type="text" id="i-pays" placeholder="Ex: Inde, Maroc, Chine..."/>
-            </div>
-            <div class="form-group">
-              <label>Valeur estimée (GNF)</label>
-              <input type="number" id="i-valeur" placeholder="Ex: 150000000" min="1"/>
-            </div>
-            <div class="form-group">
-              <label>Statut de la cargaison</label>
-              <select id="i-statut">
-                <option value="en_transit">En transit</option>
-                <option value="en_douane">En douane</option>
-                <option value="disponible">Disponible</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Date d'arrivée prévue</label>
-              <input type="date" id="i-date"/>
-            </div>
-            <button class="btn btn-brand btn-full" id="i-btn-pub" onclick="ajouterCargaison()">✅ Enregistrer</button>
-          </div>
-        </div>
-        <div>
-          <div class="dash-panel">
-            <h3>🚢 Mes cargaisons</h3>
-            <div id="i-inventory"><div class="spinner-wrap"><div class="spinner"></div></div></div>
-          </div>
-        </div>
-      </div>
-    </div>`;
-  chargerCargaisons();
-}
-
-async function ajouterCargaison() {
-  const nom    = document.getElementById('i-nom')?.value?.trim();
-  const pays   = document.getElementById('i-pays')?.value?.trim();
-  const valeur = parseInt(document.getElementById('i-valeur')?.value);
-  const statut = document.getElementById('i-statut')?.value;
-  const date   = document.getElementById('i-date')?.value;
-  const tel    = sess('hx_phone');
-
-  if(!nom || !pays || isNaN(valeur)) { toast('Remplissez tous les champs','warn'); return; }
-  const btn = document.getElementById('i-btn-pub');
-  if(btn) { btn.disabled=true; btn.textContent='⏳...'; }
-
-  const { error } = await _sb.from('cargaisons_importateurs').insert([{
-    designation: nom, pays_origine: pays, valeur_estimee: valeur,
-    statut, date_arrivee: date||null, importateur_contact: tel,
-    created_at: new Date().toISOString()
-  }]);
-
-  if(error) { toast('Erreur: '+error.message,'error'); }
-  else {
-    document.getElementById('i-nom').value='';
-    document.getElementById('i-pays').value='';
-    document.getElementById('i-valeur').value='';
-    toast('✅ Cargaison enregistrée !','success');
-    chargerCargaisons();
-  }
-  if(btn) { btn.disabled=false; btn.textContent='✅ Enregistrer'; }
-}
-
-async function chargerCargaisons() {
-  const cont = document.getElementById('i-inventory');
-  if(!cont) return;
-  const tel = sess('hx_phone');
-  const { data, error } = await _sb.from('cargaisons_importateurs').select('*')
-    .eq('importateur_contact',tel).order('created_at',{ascending:false});
-
-  if(error||!data||data.length===0) {
-    cont.innerHTML=`<div class="empty-state"><div class="empty-icon">🚢</div><div class="empty-title">Aucune cargaison</div><div class="empty-sub">Déclarez votre première cargaison.</div></div>`;
-    return;
-  }
-  const statutLabel = { en_transit:'🚢 En transit', en_douane:'🏛 En douane', disponible:'✅ Disponible' };
-  cont.innerHTML = data.map(c=>`
-    <div class="inv-item">
-      <div class="inv-item-icon">🚢</div>
-      <div class="inv-item-info">
-        <div class="inv-item-name">${sanitize(c.designation)}</div>
-        <div class="inv-item-sub">${sanitize(c.pays_origine||'')} · ${statutLabel[c.statut]||c.statut}${c.date_arrivee?' · Arrivée: '+c.date_arrivee:''}</div>
-      </div>
-      <div class="inv-item-price">${Number(c.valeur_estimee).toLocaleString('fr-FR')} GNF</div>
-      <button class="inv-del-btn" onclick="supprimerCargaison('${sanitize(c.id)}')">✕</button>
-    </div>`).join('');
-}
-
-async function supprimerCargaison(id) {
-  const ok = await hxDialog({ title:'Supprimer cette cargaison ?', msg:'Cette action est irréversible.', confirm:'Supprimer' });
-  if(!ok) return;
-  const { error } = await _sb.from('cargaisons_importateurs').delete().eq('id',id);
-  if(error) { toast('Erreur: '+error.message,'error'); return; }
-  toast('Cargaison supprimée','success');
-  chargerCargaisons();
-}
-
 let html5QrCode = null;
 let scannerOpen = false;
+let boutCart = {};
+let boutProduits = [];
+let boutActiveCat = 'Tous';
 
+// ════════════════════════════════════════════════════════
+// BOUTIQUIER – Interface complète avec onglets
+// ════════════════════════════════════════════════════════
 async function afficherStock(type) {
   stopGPS();
-  const monTel = sess('hx_phone');
-  const name   = sess('hx_name') || 'Ma Boutique';
-
+  const name = sess('hx_name') || 'Ma Boutique';
+  boutCart = {};
   document.getElementById('main-content').innerHTML = `
-    <div class="supplier-dash">
-      <div class="dash-header">
-        <div class="dash-header-left">
-          <h2>${sanitize(type)}</h2>
-          <p>🏪 ${sanitize(name)}</p>
+    <div style="padding:72px 20px 40px;max-width:1100px;margin:0 auto;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-size:1.5rem;font-weight:800;">${sanitize(type)}</div>
+          <div style="color:var(--muted);font-size:.85rem;margin-top:3px;">🏪 ${sanitize(name)}</div>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="afficherPortailFournisseur()">← Retour</button>
       </div>
+      <div class="b-tabs" id="b-tabs">
+        <button class="b-tab active" onclick="switchBTab('dashboard',this)">📊 Tableau de Bord</button>
+        <button class="b-tab" onclick="switchBTab('vente',this)">🛒 Vendre</button>
+        <button class="b-tab" onclick="switchBTab('stock',this)">📦 Stock</button>
+        <button class="b-tab" onclick="switchBTab('ocr',this)">📷 Carnet</button>
+        <button class="b-tab" onclick="switchBTab('historique',this)">🕓 Historique</button>
+      </div>
+      <div id="btab-dashboard"></div>
+      <div id="btab-vente"      style="display:none"></div>
+      <div id="btab-stock"      style="display:none"></div>
+      <div id="btab-ocr"        style="display:none"></div>
+      <div id="btab-historique" style="display:none"></div>
+    </div>`;
+  await chargerBoutProduits();
+  renderDashboard();
+}
 
-      <div class="dash-layout">
-        <!-- PANEL GAUCHE : FORM -->
-        <div>
-          <div class="dash-panel" style="margin-bottom:20px">
-            <h3>➕ Ajouter un article</h3>
+function switchBTab(tab, btn) {
+  document.querySelectorAll('.btab-page,[id^=btab-]').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.b-tab').forEach(b => b.classList.remove('active'));
+  const el = document.getElementById('btab-'+tab);
+  if(el) el.style.display = 'block';
+  btn.classList.add('active');
+  if(tab==='dashboard')  renderDashboard();
+  if(tab==='vente')      renderVente();
+  if(tab==='stock')      renderStockTab();
+  if(tab==='ocr')        renderOCRTab();
+  if(tab==='historique') renderHistorique();
+}
 
-            <div class="stat-row" id="stat-row">
-              <div class="stat-box"><div class="stat-box-val" id="stat-count">–</div><div class="stat-box-label">Produits</div></div>
-              <div class="stat-box"><div class="stat-box-val" id="stat-orders">–</div><div class="stat-box-label">Commandes</div></div>
-            </div>
+async function chargerBoutProduits() {
+  const tel = sess('hx_phone');
+  const { data } = await _sb.from('produits').select('*').eq('vendeur_contact',tel).order('created_at',{ascending:false});
+  boutProduits = data || [];
+  const { data: ventes } = await _sb.from('ventes_boutiquier').select('*').eq('vendeur_contact',tel);
+  window._boutVentes = ventes || [];
+}
 
-            <button class="scan-trigger" onclick="toggleScanner()">📷 Scanner code-barres</button>
-            <div id="reader"></div>
-            <div class="scan-status" id="scan-status"></div>
+// ═══ DASHBOARD ═══
+function renderDashboard() {
+  const zone = document.getElementById('btab-dashboard');
+  if(!zone) return;
+  const prods = boutProduits;
+  const totalQte   = prods.reduce((s,p) => s + (p.stock||0), 0);
+  const valeurBrute= prods.reduce((s,p) => s + (p.prix||0)*(p.stock||0), 0);
+  const benefice   = prods.reduce((s,p) => s + ((p.prix||0)-(p.prix_achat||0))*(p.stock||0), 0);
+  const ruptures   = prods.filter(p => (p.stock||0) <= 3);
+  const ventes     = window._boutVentes || [];
+  const caTotal    = ventes.reduce((s,v) => s + (v.montant_total||0), 0);
+  const cats = {};
+  prods.forEach(p => { cats[p.categorie||'Divers'] = (cats[p.categorie||'Divers']||0)+1; });
 
-            <div class="form-group">
-              <label>Nom du produit</label>
-              <input type="text" id="p-nom" placeholder="Ex: Sac de riz 50kg"/>
-            </div>
-            <div class="form-group">
-              <label>Prix (GNF)</label>
-              <input type="number" id="p-prix" placeholder="Ex: 350000" min="100"/>
-            </div>
-            <div class="form-group">
-              <label>Catégorie</label>
-              <select id="p-cat">
-                <option>Alimentation</option>
-                <option>Boissons</option>
-                <option>Électronique</option>
-                <option>Vêtements</option>
-                <option>Hygiène</option>
-                <option>Divers</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Zone</label>
-              <select id="p-zone">
-                <option>Kaloum</option><option>Dixinn</option><option>Ratoma</option><option>Matam</option><option>Matoto</option>
-              </select>
-            </div>
-            <button class="btn btn-brand btn-full" id="btn-publier" onclick="ajouterProduit()">✅ Publier le produit</button>
+  zone.innerHTML = `
+    <div class="kpi-row">
+      <div class="kpi-card green">
+        <div class="kpi-icon">💰</div>
+        <div class="kpi-val">${(valeurBrute/1000).toFixed(0)}K</div>
+        <div class="kpi-label">Valeur Boutique (GNF)</div>
+        <div class="kpi-sub pos">📦 ${totalQte} articles</div>
+      </div>
+      <div class="kpi-card ${benefice>=0?'green':'red'}">
+        <div class="kpi-icon">${benefice>=0?'📈':'📉'}</div>
+        <div class="kpi-val">${(benefice/1000).toFixed(0)}K</div>
+        <div class="kpi-label">${benefice>=0?'Bénéfices':'Pertes'} Estimés</div>
+        <div class="kpi-sub ${benefice>=0?'pos':'neg'}">${benefice>=0?'↑ Bonne marge':'↓ Prix achat élevé'}</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-icon">🧾</div>
+        <div class="kpi-val">${(caTotal/1000).toFixed(0)}K</div>
+        <div class="kpi-label">Ventes du Mois</div>
+        <div class="kpi-sub pos">${ventes.length} transaction(s)</div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-icon">⚠️</div>
+        <div class="kpi-val">${ruptures.length}</div>
+        <div class="kpi-label">Ruptures Imminentes</div>
+        <div class="kpi-sub neg">${ruptures.slice(0,2).map(p=>p.nom_produit).join(', ')||'Aucune'}</div>
+      </div>
+    </div>
+
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="chart-title">📂 Stock par catégorie</div>
+        <canvas id="chart-cats" height="160"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">🔥 Produits les plus vendus</div>
+        <canvas id="chart-top" height="160"></canvas>
+      </div>
+    </div>
+
+    <div style="font-family:'Sora',sans-serif;font-size:.95rem;font-weight:800;margin-bottom:12px;">🔋 Jauges de Stock</div>
+    <div class="stock-jauge-grid">
+      ${prods.slice(0,8).map(p => {
+        const max = p.stock_max || 50;
+        const pct = Math.min(100, Math.round(((p.stock||0)/max)*100));
+        const cls = pct>50?'high':pct>20?'mid':'low';
+        const em  = ({Alimentation:'🌾',Boissons:'🥤',Hygiène:'🧼',Électronique:'📱',Vêtements:'👕'}[p.categorie]||'📦');
+        return `<div class="sj-item">
+          <div class="sj-top">
+            <div class="sj-emoji">${em}</div>
+            <div><div class="sj-name">${sanitize(p.nom_produit)}</div><div class="sj-qty">${p.stock||0} / ${max}</div></div>
           </div>
+          <div class="jauge"><div class="jauge-fill ${cls}" style="width:${pct}%"></div></div>
+          ${pct<=10?'<div class="rupture-tag">⚠️ RUPTURE IMMINENTE</div>':''}
+        </div>`;
+      }).join('')}
+      ${!prods.length?'<div style="color:var(--muted);font-size:.88rem;padding:20px">Aucun produit en stock.</div>':''}
+    </div>
+
+    <div style="font-family:'Sora',sans-serif;font-size:.95rem;font-weight:800;margin-bottom:12px;">🤖 Achats Prioritaires ce Mois</div>
+    ${getPredictions().map(p => `
+      <div class="predict-card">
+        <div class="predict-icon">📦</div>
+        <div class="predict-info">
+          <div class="predict-name">${sanitize(p.nom)}</div>
+          <div class="predict-reason">${sanitize(p.raison)}</div>
         </div>
+        <div class="predict-badge ${p.urgent?'urgent':'soon'}">${p.urgent?'🔴 URGENT':'🟡 Bientôt'}</div>
+      </div>`).join('')}`;
 
-        <!-- PANEL DROIT : INVENTAIRE + COMMANDES -->
-        <div>
-          <div class="dash-panel" style="margin-bottom:20px">
-            <h3>📦 Mon stock</h3>
-            <div class="inventory-list" id="inventory-list">
-              <div class="spinner-wrap"><div class="spinner"></div></div>
-            </div>
-          </div>
+  setTimeout(() => {
+    const catLabels = Object.keys(cats);
+    const catVals   = Object.values(cats);
+    const ctxC = document.getElementById('chart-cats');
+    if(ctxC && window.Chart) {
+      if(ctxC._chart) ctxC._chart.destroy();
+      ctxC._chart = new window.Chart(ctxC, {
+        type:'doughnut',
+        data:{ labels:catLabels, datasets:[{ data:catVals, backgroundColor:['#00C851','#FF6B35','#3B82F6','#FFD60A','#8B5CF6','#EF4444'], borderWidth:0, hoverOffset:6 }] },
+        options:{ plugins:{ legend:{ position:'right', labels:{ color:'#6B7680', boxWidth:12, font:{size:11} } } }, cutout:'65%' }
+      });
+    }
+    const topMap = {};
+    (window._boutVentes||[]).forEach(v => { topMap[v.nom_produit]=(topMap[v.nom_produit]||0)+v.quantite_vendue; });
+    const topKeys = Object.keys(topMap).sort((a,b)=>topMap[b]-topMap[a]).slice(0,5);
+    const ctxT = document.getElementById('chart-top');
+    if(ctxT && window.Chart) {
+      if(ctxT._chart) ctxT._chart.destroy();
+      ctxT._chart = new window.Chart(ctxT, {
+        type:'bar',
+        data:{ labels:topKeys.length?topKeys:['Pas encore de ventes'], datasets:[{ data:topKeys.length?topKeys.map(k=>topMap[k]):[0], backgroundColor:'rgba(0,200,81,.7)', borderRadius:6 }] },
+        options:{ plugins:{legend:{display:false}}, scales:{ y:{ticks:{color:'#6B7680',font:{size:10}},grid:{color:'#E2E8E2'}}, x:{ticks:{color:'#6B7680'},grid:{display:false}} } }
+      });
+    }
+  }, 100);
+}
 
-          <div class="dash-panel" style="margin-bottom:20px">
-            <h3>📬 Commandes en attente</h3>
-            <div id="orders-list">
-              <div class="spinner-wrap"><div class="spinner"></div></div>
-            </div>
-          </div>
+function getPredictions() {
+  const ventes = window._boutVentes || [];
+  const now = new Date();
+  const mM = now.getMonth();
+  const mP = mM===0?11:mM-1;
+  const vCM = ventes.filter(v => new Date(v.created_at).getMonth()===mM);
+  const vMP = ventes.filter(v => new Date(v.created_at).getMonth()===mP);
+  const topCM={}, topMP={};
+  vCM.forEach(v=>{ topCM[v.nom_produit]=(topCM[v.nom_produit]||0)+v.quantite_vendue; });
+  vMP.forEach(v=>{ topMP[v.nom_produit]=(topMP[v.nom_produit]||0)+v.quantite_vendue; });
+  const preds = [];
+  boutProduits.filter(p=>(p.stock||0)<=5).forEach(p => {
+    preds.push({ nom:p.nom_produit, raison:`Stock critique : ${p.stock||0} unités restantes.`, urgent:true });
+  });
+  Object.entries(topMP).forEach(([nom,qty]) => {
+    if(qty>5 && !topCM[nom]) preds.push({ nom, raison:`Très demandé le mois passé (${qty}u) mais pas encore commandé.`, urgent:false });
+  });
+  if(!preds.length) preds.push({ nom:'Aucune suggestion', raison:'Continuez à enregistrer vos ventes pour des prédictions.', urgent:false });
+  return preds.slice(0,5);
+}
 
-          <div class="dash-panel">
-            <h3>💳 Paiements récents</h3>
-            <div id="payments-list">
-              <div class="spinner-wrap"><div class="spinner"></div></div>
-            </div>
+// ═══ VENTE (Plan C – Grille tactile) ═══
+function renderVente() {
+  const zone = document.getElementById('btab-vente');
+  if(!zone) return;
+  const cats = ['Tous', ...new Set(boutProduits.map(p => p.categorie||'Divers'))];
+  zone.innerHTML = `
+    <div class="vente-layout">
+      <div>
+        <div class="vente-search">
+          <span class="vente-search-icon">🔍</span>
+          <input type="text" id="vente-search-inp" placeholder="Chercher un produit..." oninput="filterProdVente()"/>
+        </div>
+        <div class="cat-filter-row">
+          ${cats.map(c=>`<button class="cat-chip ${c==='Tous'?'active':''}" onclick="setCatVente('${sanitize(c)}',this)">${sanitize(c)}</button>`).join('')}
+        </div>
+        <div class="prod-vente-grid" id="prod-vente-grid"></div>
+      </div>
+      <div class="panier-box">
+        <div class="panier-title">🛒 Panier <span class="panier-count" id="panier-count">0</span></div>
+        <div class="panier-list" id="panier-list">
+          <div class="panier-empty-msg">🛒 Panier vide<br><small>Cliquez sur un produit</small></div>
+        </div>
+        <div class="total-zone">
+          <div class="total-label">Total à encaisser</div>
+          <div class="total-val" id="panier-total">0 GNF</div>
+          <button class="vocal-btn" onclick="enoncer()">🔊 Énoncer le total</button>
+        </div>
+        <button class="btn-vendre-big" onclick="openConfirmVente()">✅ VENDRE</button>
+        <button class="btn-clear-panier" onclick="clearCart()">🗑 Vider le panier</button>
+      </div>
+    </div>
+    <div id="modal-vente" style="display:none">
+      <div class="modal-vente-overlay" onclick="closeConfirmVente()">
+        <div class="modal-vente-box" onclick="event.stopPropagation()">
+          <div class="modal-vente-title">✅ Confirmer la vente ?</div>
+          <div class="modal-vente-lines" id="modal-vente-recap"></div>
+          <div class="modal-vente-total" id="modal-vente-total"></div>
+          <div class="modal-vente-btns">
+            <button class="btn btn-ghost" style="flex:1" onclick="closeConfirmVente()">✖ Annuler</button>
+            <button class="btn btn-brand" style="flex:1" onclick="confirmerVente()">✅ Confirmer & Reçu</button>
           </div>
         </div>
       </div>
     </div>`;
-
-  await actualiserStock();
-  await chargerCommandes();
-  await chargerPaiements();
+  renderProdVente();
 }
 
-async function toggleScanner() {
-  const readerDiv = document.getElementById('reader');
-  if(scannerOpen) {
-    if(html5QrCode) { try { await html5QrCode.stop(); } catch{} }
-    readerDiv.style.display='none';
-    document.getElementById('scan-status').textContent='';
-    scannerOpen=false;
-  } else {
-    readerDiv.style.display='block';
-    await initScanner();
-    scannerOpen=true;
+function filterProdVente() {
+  const q = (document.getElementById('vente-search-inp')?.value||'').toLowerCase();
+  let liste = boutProduits;
+  if(boutActiveCat!=='Tous') liste = liste.filter(p=>(p.categorie||'Divers')===boutActiveCat);
+  if(q) liste = liste.filter(p=>p.nom_produit?.toLowerCase().includes(q));
+  renderProdVenteList(liste);
+}
+
+function setCatVente(cat, btn) {
+  boutActiveCat = cat;
+  document.querySelectorAll('.cat-chip').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  filterProdVente();
+}
+
+function renderProdVente() { boutActiveCat='Tous'; filterProdVente(); }
+
+function renderProdVenteList(liste) {
+  const grid = document.getElementById('prod-vente-grid');
+  if(!grid) return;
+  const em = {Alimentation:'🌾',Boissons:'🥤',Hygiène:'🧼',Électronique:'📱',Vêtements:'👕',Divers:'📦'};
+  if(!liste.length) { grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:40px">Aucun produit</div>'; return; }
+  grid.innerHTML = liste.map(p => {
+    const inCart = boutCart[p.id]||0;
+    return `<div class="pv-tile ${inCart?'in-cart':''}" onclick="addToCart('${p.id}')">
+      ${inCart?`<div class="pv-cart-badge">${inCart}</div>`:''}
+      ${(p.stock||0)<=5?'<div class="pv-stock-low">Stock bas</div>':''}
+      <div class="pv-emoji">${em[p.categorie||'Divers']||'📦'}</div>
+      <div class="pv-name">${sanitize(p.nom_produit)}</div>
+      <div class="pv-price">${Number(p.prix).toLocaleString('fr-FR')} GNF</div>
+    </div>`;
+  }).join('');
+}
+
+function addToCart(id) { boutCart[id]=(boutCart[id]||0)+1; filterProdVente(); renderPanier(); }
+function changeQty(id, delta) { boutCart[id]=(boutCart[id]||0)+delta; if(boutCart[id]<=0) delete boutCart[id]; filterProdVente(); renderPanier(); }
+function clearCart() { boutCart={}; filterProdVente(); renderPanier(); }
+
+function renderPanier() {
+  const items = Object.entries(boutCart);
+  const cnt = document.getElementById('panier-count');
+  if(cnt) cnt.textContent = items.reduce((s,[,q])=>s+q,0);
+  const listEl = document.getElementById('panier-list');
+  if(!listEl) return;
+  if(!items.length) {
+    listEl.innerHTML = '<div class="panier-empty-msg">🛒 Panier vide<br><small>Cliquez sur un produit</small></div>';
+    const tv=document.getElementById('panier-total'); if(tv) tv.textContent='0 GNF';
+    return;
   }
-}
-
-async function initScanner() {
-  const status = document.getElementById('scan-status');
-  status.textContent = '📷 Accès caméra...';
-  html5QrCode = new Html5Qrcode('reader', { verbose:false });
-  try {
-    await html5QrCode.start(
-      { facingMode:'environment' },
-      { fps:15, qrbox:{ width:250, height:150 } },
-      async (text) => {
-        if(navigator.vibrate) navigator.vibrate(80);
-        if(text.startsWith('HAILANDX_CONFIRM_')) {
-          await toggleScanner();
-          const { error } = await _sb.from('missions').update({statut:'livre'}).eq('id',text.replace('HAILANDX_CONFIRM_',''));
-          toast(error ? 'Erreur validation':'✅ Livraison validée !', error?'error':'success');
-        } else {
-          status.textContent = '🔍 Recherche du produit...';
-          await chercherProduitParcode(text);
-          await toggleScanner();
-        }
-      }
-    );
-    status.textContent = '✅ Prêt – visez un code-barres';
-  } catch(e) {
-    status.textContent = '❌ Accès caméra refusé';
-    scannerOpen=false;
-  }
-}
-
-async function chercherProduitParcode(barcode) {
-  const status = document.getElementById('scan-status');
-  try {
-    const res  = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
-    const data = await res.json();
-    if(data.status===1) {
-      const nom = data.product.product_name_fr || data.product.product_name || '';
-      if(nom) {
-        const inp = document.getElementById('p-nom');
-        if(inp) inp.value = sanitize(nom);
-        toast('✨ Produit reconnu : '+nom,'success');
-      }
-    } else {
-      status.textContent = '⚠️ Produit non trouvé dans la base mondiale';
-    }
-  } catch { status.textContent = '⚠️ Erreur réseau'; }
-}
-
-async function ajouterProduit() {
-  const nom   = document.getElementById('p-nom')?.value?.trim();
-  const prix  = parseInt(document.getElementById('p-prix')?.value);
-  const cat   = document.getElementById('p-cat')?.value;
-  const zone  = document.getElementById('p-zone')?.value;
-  const monTel= sess('hx_phone');
-
-  if(!nom || isNaN(prix) || prix < 100) { toast('Remplissez nom et prix (min 100 GNF)','warn'); return; }
-
-  const btn = document.getElementById('btn-publier');
-  if(btn) { btn.disabled=true; btn.textContent='⏳...'; }
-
-  const { error } = await _sb.from('produits').insert([{
-    nom_produit: nom, prix, categorie: cat, zone,
-    vendeur_contact: monTel, created_at: new Date().toISOString()
-  }]);
-
-  if(error) { toast('Erreur: '+error.message,'error'); }
-  else {
-    document.getElementById('p-nom').value='';
-    document.getElementById('p-prix').value='';
-    toast('✅ Produit publié !','success');
-    await actualiserStock();
-  }
-  if(btn) { btn.disabled=false; btn.textContent='✅ Publier le produit'; }
-}
-
-async function actualiserStock() {
-  const monTel = sess('hx_phone');
-  const inv    = document.getElementById('inventory-list');
-  const stat   = document.getElementById('stat-count');
-  if(!inv) return;
-
-  const { data, error } = await _sb.from('produits').select('*').eq('vendeur_contact',monTel).order('created_at',{ascending:false});
-
-  if(error) { inv.innerHTML=`<p style="color:var(--muted);font-size:.88rem">Erreur: ${sanitize(error.message)}</p>`; return; }
-  if(!data || data.length===0) {
-    inv.innerHTML=`<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">Aucun produit</div><div class="empty-sub">Ajoutez votre premier article.</div></div>`;
-    if(stat) stat.textContent='0'; return;
-  }
-
-  if(stat) stat.textContent=data.length;
-  inv.innerHTML = data.map(p => `
-    <div class="inv-item">
-      <div class="inv-item-icon">📦</div>
-      <div class="inv-item-info">
-        <div class="inv-item-name">${sanitize(p.nom_produit)}</div>
-        <div class="inv-item-sub">${sanitize(p.categorie||'Général')} · ${sanitize(p.zone||'')}</div>
+  let total=0;
+  listEl.innerHTML = items.map(([id,qty])=>{
+    const p=boutProduits.find(x=>x.id==id); if(!p) return '';
+    total+=p.prix*qty;
+    return `<div class="panier-item">
+      <div class="panier-item-emoji">📦</div>
+      <div class="panier-item-info">
+        <div class="panier-item-name">${sanitize(p.nom_produit)}</div>
+        <div class="panier-item-price">${(p.prix*qty).toLocaleString('fr-FR')} GNF</div>
       </div>
-      <div class="inv-item-price">${Number(p.prix).toLocaleString('fr-FR')} GNF</div>
-      <button class="inv-del-btn" onclick="supprimerProduit('${sanitize(p.id)}')">✕</button>
-    </div>`).join('');
+      <div class="qty-ctrl">
+        <button class="qty-btn" onclick="changeQty('${id}',-1)">−</button>
+        <span class="qty-num">${qty}</span>
+        <button class="qty-btn" onclick="changeQty('${id}',+1)">+</button>
+      </div>
+    </div>`;
+  }).join('');
+  const tv=document.getElementById('panier-total'); if(tv) tv.textContent=total.toLocaleString('fr-FR')+' GNF';
+}
+
+function enoncer() {
+  const tv = document.getElementById('panier-total');
+  if(!tv) return;
+  if('speechSynthesis' in window) {
+    const u=new SpeechSynthesisUtterance(`Total : ${tv.textContent.replace(' GNF','')} Francs Guinéens`);
+    u.lang='fr-FR'; window.speechSynthesis.speak(u);
+  }
+}
+
+function openConfirmVente() {
+  const items = Object.entries(boutCart);
+  if(!items.length) { toast('Panier vide !','warn'); return; }
+  let total=0, lines='';
+  items.forEach(([id,qty])=>{ const p=boutProduits.find(x=>x.id==id); if(!p) return; total+=p.prix*qty; lines+=`• ${p.nom_produit} × ${qty} = ${(p.prix*qty).toLocaleString('fr-FR')} GNF\n`; });
+  const recap=document.getElementById('modal-vente-recap'); if(recap) recap.innerHTML=lines.replace(/\n/g,'<br>');
+  const totalEl=document.getElementById('modal-vente-total'); if(totalEl) totalEl.textContent=total.toLocaleString('fr-FR')+' GNF';
+  document.getElementById('modal-vente').style.display='block';
+}
+function closeConfirmVente() { document.getElementById('modal-vente').style.display='none'; }
+
+async function confirmerVente() {
+  closeConfirmVente();
+  const items=Object.entries(boutCart), tel=sess('hx_phone');
+  let total=0; const lignes=[];
+  for(const [id,qty] of items) {
+    const p=boutProduits.find(x=>x.id==id); if(!p) continue;
+    total+=p.prix*qty;
+    lignes.push({nom_produit:p.nom_produit,quantite_vendue:qty,prix_unitaire:p.prix,montant_total:p.prix*qty});
+    const ns=Math.max(0,(p.stock||0)-qty);
+    await _sb.from('produits').update({stock:ns}).eq('id',p.id);
+    p.stock=ns;
+    await _sb.from('ventes_boutiquier').insert([{vendeur_contact:tel,nom_produit:p.nom_produit,quantite_vendue:qty,prix_unitaire:p.prix,montant_total:p.prix*qty,created_at:new Date().toISOString()}]);
+  }
+  window._boutVentes=(window._boutVentes||[]).concat(lignes.map(l=>({...l,created_at:new Date().toISOString(),vendeur_contact:tel})));
+  toast('✅ Vente enregistrée !','success');
+  genererRecuPDF(lignes,total);
+  clearCart();
+}
+
+function genererRecuPDF(lignes, total) {
+  const w=window.open('','_blank','width=420,height=640');
+  const now=new Date().toLocaleString('fr-FR'), name=sess('hx_name')||'Boutique';
+  w.document.write(`<!DOCTYPE html><html><head><title>Reçu HailandX</title>
+  <style>body{font-family:monospace;padding:24px;max-width:340px;margin:0 auto;color:#111;}h2{text-align:center;}
+  .logo{text-align:center;font-size:1.1rem;color:#00C851;font-weight:900;margin-bottom:4px;}
+  hr{border:1px dashed #ccc;}.row{display:flex;justify-content:space-between;margin:6px 0;font-size:.9rem;}
+  .total{font-size:1.2rem;font-weight:900;}.footer{text-align:center;font-size:.75rem;color:#888;margin-top:20px;}.qr{text-align:center;font-size:3rem;}</style></head><body>
+
+  <div class="logo">HailandX</div><h2>🧾 Reçu de Vente</h2>
+  <div style="text-align:center;font-size:.8rem;color:#888;margin-bottom:10px;">${now} · ${sanitize(name)}</div><hr/>
+  ${lignes.map(l=>`<div class="row"><span>${sanitize(l.nom_produit)} × ${l.quantite_vendue}</span><span>${l.montant_total.toLocaleString('fr-FR')} GNF</span></div>`).join('')}
+  <hr/><div class="row total"><span>TOTAL</span><span>${total.toLocaleString('fr-FR')} GNF</span></div>
+  <div class="footer">Merci pour votre achat !<br>HailandX – Conakry</div><div class="qr">▣</div>
+  <script>setTimeout(()=>window.print(),300)<\/script></body></html>`);
+  w.document.close();
+}
+
+// ═══ STOCK TAB ═══
+function renderStockTab() {
+const zone=document.getElementById(‘btab-stock’); if(!zone) return;
+zone.innerHTML=` <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;"> <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;">📦 Mon Stock</div> <button class="btn btn-brand btn-sm btn-round" onclick="openAddProduit()">+ Ajouter</button> </div> <div id="add-prod-panel" style="display:none;margin-bottom:20px;"> <div class="dash-panel"> <h3 style="margin-bottom:16px;">➕ Nouveau produit</h3> <button class="scan-trigger" onclick="toggleScannerStock()">📷 Scanner code-barres</button> <div id="reader-stock" style="display:none;width:100%;border-radius:12px;overflow:hidden;background:#000;border:2px solid var(--brand);min-height:180px;margin-bottom:10px;"></div> <div class="scan-status" id="scan-status-stock"></div> <div class="form-group"><label>Nom du produit</label><input type="text" id="p-nom" placeholder="Ex: Sac de riz 50kg"/></div> <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"> <div class="form-group"><label>Prix de vente (GNF)</label><input type="number" id="p-prix" placeholder="350000" min="100"/></div> <div class="form-group"><label>Prix d'achat (GNF)</label><input type="number" id="p-achat" placeholder="280000" min="0"/></div> </div> <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"> <div class="form-group"><label>Stock initial</label><input type="number" id="p-stock" placeholder="50" min="0"/></div> <div class="form-group"><label>Stock max (alerte)</label><input type="number" id="p-stockmax" placeholder="100" min="1"/></div> </div> <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"> <div class="form-group"><label>Catégorie</label> <select id="p-cat"><option>Alimentation</option><option>Boissons</option><option>Électronique</option><option>Vêtements</option><option>Hygiène</option><option>Divers</option></select> </div> <div class="form-group"><label>Zone</label> <select id="p-zone"><option>Kaloum</option><option>Dixinn</option><option>Ratoma</option><option>Matam</option><option>Matoto</option></select> </div> </div> <div style="display:flex;gap:10px;"> <button class="btn btn-brand btn-full" id="btn-publier" onclick="ajouterProduit()">✅ Publier</button> <button class="btn btn-ghost" onclick="closeAddProduit()">Annuler</button> </div> </div> </div> <div id="stock-list-full"></div>`;
+renderStockList();
+}
+
+function openAddProduit()  { document.getElementById(‘add-prod-panel’).style.display=‘block’; }
+function closeAddProduit() { document.getElementById(‘add-prod-panel’).style.display=‘none’; }
+
+let scannerStockOpen=false;
+async function toggleScannerStock() {
+const rd=document.getElementById(‘reader-stock’);
+if(scannerStockOpen) {
+if(html5QrCode){try{await html5QrCode.stop();}catch{}}
+rd.style.display=‘none’; scannerStockOpen=false;
+} else {
+rd.style.display=‘block’;
+html5QrCode=new Html5Qrcode(‘reader-stock’,{verbose:false});
+const st=document.getElementById(‘scan-status-stock’);
+if(st) st.textContent=‘📷 Accès caméra…’;
+try {
+await html5QrCode.start({facingMode:‘environment’},{fps:15,qrbox:{width:250,height:150}},async(text)=>{
+if(st) st.textContent=‘🔍 Recherche…’;
+await chercherProduitParcode(text);
+await toggleScannerStock();
+});
+if(st) st.textContent=‘✅ Prêt – visez un code-barres’;
+scannerStockOpen=true;
+} catch(e){ if(st) st.textContent=‘❌ Caméra refusée’; }
+}
+}
+
+function renderStockList() {
+const zone=document.getElementById(‘stock-list-full’); if(!zone) return;
+if(!boutProduits.length){zone.innerHTML=’<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">Aucun produit</div><div class="empty-sub">Ajoutez votre premier article.</div></div>’;return;}
+zone.innerHTML=boutProduits.map(p=>{
+const marge=(p.prix||0)-(p.prix_achat||0);
+const pct=Math.min(100,Math.round(((p.stock||0)/(p.stock_max||50))*100));
+const cls=pct>50?‘high’:pct>20?‘mid’:‘low’;
+return `<div class="dash-panel" style="margin-bottom:12px;"> <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"> <div><div style="font-weight:800;font-size:.95rem;">${sanitize(p.nom_produit)}</div> <div style="font-size:.75rem;color:var(--muted)">${sanitize(p.categorie||'Divers')} · ${sanitize(p.zone||'')}</div></div> <button class="inv-del-btn" onclick="supprimerProduit('${sanitize(p.id)}')">✕</button> </div> <div class="jauge" style="margin-bottom:8px"><div class="jauge-fill ${cls}" style="width:${pct}%"></div></div> <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;"> <div class="stat-box"><div class="stat-box-val">${p.stock||0}</div><div class="stat-box-label">Stock</div></div> <div class="stat-box"><div class="stat-box-val" style="color:var(--brand)">${Number(p.prix||0).toLocaleString('fr-FR')}</div><div class="stat-box-label">Vente</div></div> <div class="stat-box"><div class="stat-box-val" style="color:var(--muted)">${Number(p.prix_achat||0).toLocaleString('fr-FR')}</div><div class="stat-box-label">Achat</div></div> <div class="stat-box"><div class="stat-box-val" style="color:${marge>=0?'var(--brand)':'#EF4444'}">${Number(marge).toLocaleString('fr-FR')}</div><div class="stat-box-label">Marge</div></div> </div> <div style="display:flex;gap:8px;"> <button class="btn btn-brand btn-sm" style="flex:1" onclick="ajusterStock('${p.id}',+10)">➕ Appro</button> <button class="btn btn-danger btn-sm" style="flex:1" onclick="ajusterStock('${p.id}',-5)">➖ Retrait</button> </div> </div>`;
+}).join(’’);
+}
+
+async function ajusterStock(id, delta) {
+const p=boutProduits.find(x=>x.id==id); if(!p) return;
+p.stock=Math.max(0,(p.stock||0)+delta);
+await _sb.from(‘produits’).update({stock:p.stock}).eq(‘id’,p.id);
+toast(`${delta>0?'➕':'➖'} ${p.nom_produit} → ${p.stock}`,‘success’);
+renderStockList();
+}
+
+// ═══ OCR / CARNET ═══
+const OCR_SIM=[{nom:‘Sac de riz 5kg’,emoji:‘🌾’,qty:2,checked:true},{nom:‘Fanta 33cl’,emoji:‘🥤’,qty:5,checked:true},{nom:‘Savon Omo’,emoji:‘🧼’,qty:3,checked:false}];
+
+function renderOCRTab() {
+const zone=document.getElementById(‘btab-ocr’); if(!zone) return;
+zone.innerHTML=` <div style="max-width:560px;margin:0 auto;text-align:center;"> <div style="font-family:'Sora',sans-serif;font-size:1.2rem;font-weight:800;margin-bottom:6px;">📷 Photo de ton Carnet</div> <div style="color:var(--muted);font-size:.88rem;margin-bottom:24px;">Prends en photo tes notes de ventes. L'app reconnaît les produits et enregistre automatiquement.</div> <div class="ocr-drop" onclick="document.getElementById('ocr-input').click()"> <div class="ocr-drop-icon">📒</div> <div class="ocr-drop-label">Appuie ici pour prendre une photo</div> <div class="ocr-drop-sub">JPG, PNG acceptés · Caméra ou galerie</div> </div> <input type="file" id="ocr-input" accept="image/*" capture="camera" style="display:none" onchange="handleOCRPhoto(event)"/> <div id="ocr-preview-zone" style="display:none;margin-bottom:16px;"></div> <div id="ocr-results-zone" style="display:none;text-align:left;"></div> </div>`;
+}
+
+function handleOCRPhoto(e) {
+const file=e.target.files[0]; if(!file) return;
+const reader=new FileReader();
+reader.onload=ev=>{
+document.getElementById(‘ocr-preview-zone’).style.display=‘block’;
+document.getElementById(‘ocr-preview-zone’).innerHTML=`<img src="${ev.target.result}" style="width:100%;border-radius:12px;margin-bottom:8px;"/>`;
+toast(‘🤖 Analyse en cours…’,’’);
+setTimeout(()=>{ showOCRResults(); toast(‘✅ Produits reconnus !’,‘success’); },2000);
+};
+reader.readAsDataURL(file);
+}
+
+function showOCRResults() {
+const zone=document.getElementById(‘ocr-results-zone’); if(!zone) return;
+zone.style.display=‘block’;
+zone.innerHTML=`<div style="font-family:'Sora',sans-serif;font-size:.95rem;font-weight:800;margin-bottom:10px;">Produits reconnus – Confirme :</div> ${OCR_SIM.map((item,i)=>`
+<div class="ocr-result-item">
+<div class="ocr-chk ${item.checked?'checked':''}" id="ocr-chk-${i}" onclick="toggleOCRChk(${i})">${item.checked?‘✓’:’’}</div>
+<div style="font-size:1.5rem">${item.emoji}</div>
+<div style="flex:1"><div style="font-weight:800;font-size:.9rem">${sanitize(item.nom)}</div><div style="font-size:.75rem;color:var(--muted)">Quantité vendue : ${item.qty}</div></div>
+</div>`).join('')} <button class="btn btn-brand btn-full" style="margin-top:12px" onclick="confirmerOCR()">📥 Enregistrer ces ventes</button>`;
+}
+
+function toggleOCRChk(i) { OCR_SIM[i].checked=!OCR_SIM[i].checked; showOCRResults(); }
+
+async function confirmerOCR() {
+const tel=sess(‘hx_phone’);
+for(const item of OCR_SIM.filter(x=>x.checked)) {
+await _sb.from(‘ventes_boutiquier’).insert([{vendeur_contact:tel,nom_produit:item.nom,quantite_vendue:item.qty,prix_unitaire:0,montant_total:0,created_at:new Date().toISOString()}]);
+const p=boutProduits.find(x=>x.nom_produit===item.nom);
+if(p){p.stock=Math.max(0,(p.stock||0)-item.qty);await _sb.from(‘produits’).update({stock:p.stock}).eq(‘id’,p.id);}
+}
+toast(‘✅ Ventes du carnet enregistrées !’,‘success’);
+document.getElementById(‘ocr-results-zone’).style.display=‘none’;
+document.getElementById(‘ocr-preview-zone’).style.display=‘none’;
+}
+
+// ═══ HISTORIQUE ═══
+function renderHistorique() {
+const zone=document.getElementById(‘btab-historique’); if(!zone) return;
+const ventes=(window._boutVentes||[]).slice().reverse();
+if(!ventes.length){zone.innerHTML=’<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">Aucune vente</div><div class="empty-sub">Vos ventes apparaîtront ici.</div></div>’;return;}
+zone.innerHTML=ventes.map(v=>` <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;"> <div> <div style="font-weight:800;font-size:.9rem;">${sanitize(v.nom_produit)}</div> <div style="font-size:.75rem;color:var(--muted)">Qté: ${v.quantite_vendue} · ${new Date(v.created_at).toLocaleString('fr-FR')}</div> </div> <div style="font-family:'Sora',sans-serif;color:var(--brand);font-weight:800;">${Number(v.montant_total).toLocaleString('fr-FR')} GNF</div> </div>`).join(’’);
+}
+
+// ═══ Fonctions Stock partagées ═══
+async function ajouterProduit() {
+const nom=document.getElementById(‘p-nom’)?.value?.trim();
+const prix=parseInt(document.getElementById(‘p-prix’)?.value)||0;
+const achat=parseInt(document.getElementById(‘p-achat’)?.value)||0;
+const stock=parseInt(document.getElementById(‘p-stock’)?.value)||0;
+const smax=parseInt(document.getElementById(‘p-stockmax’)?.value)||100;
+const cat=document.getElementById(‘p-cat’)?.value;
+const zone=document.getElementById(‘p-zone’)?.value;
+const tel=sess(‘hx_phone’);
+if(!nom||prix<100){toast(‘Remplissez nom et prix (min 100 GNF)’,‘warn’);return;}
+const btn=document.getElementById(‘btn-publier’);
+if(btn){btn.disabled=true;btn.textContent=‘⏳…’;}
+const{error}=await _sb.from(‘produits’).insert([{nom_produit:nom,prix,prix_achat:achat,stock,stock_max:smax,categorie:cat,zone,vendeur_contact:tel,created_at:new Date().toISOString()}]);
+if(error){toast(’Erreur: ’+error.message,‘error’);}
+else{toast(‘✅ Produit ajouté !’,‘success’);await chargerBoutProduits();closeAddProduit();renderStockList();}
+if(btn){btn.disabled=false;btn.textContent=‘✅ Publier’;}
 }
 
 async function supprimerProduit(id) {
-  const ok = await hxDialog({ title:'Supprimer ce produit ?', msg:'Cette action est irréversible.', confirm:'Supprimer' });
-  if(!ok) return;
-  const { error } = await _sb.from('produits').delete().eq('id',id);
-  if(error) { toast('Erreur: '+error.message,'error'); return; }
-  toast('Produit supprimé','success');
-  await actualiserStock();
+const ok=await hxDialog({title:‘Supprimer ce produit ?’,msg:‘Cette action est irréversible.’,confirm:‘Supprimer’});
+if(!ok) return;
+const{error}=await _sb.from(‘produits’).delete().eq(‘id’,id);
+if(error){toast(’Erreur: ’+error.message,‘error’);return;}
+boutProduits=boutProduits.filter(p=>p.id!=id);
+toast(‘Produit supprimé’,‘success’);
+renderStockList();
 }
 
-async function chargerCommandes() {
-  const monTel = sess('hx_phone');
-  const cont   = document.getElementById('orders-list');
-  const stat   = document.getElementById('stat-orders');
-  if(!cont) return;
-
-  const { data, error } = await _sb.from('missions')
-    .select('*, clients(nom,zone)')
-    .eq('vendeur_id',monTel).eq('statut','en_attente')
-    .order('created_at',{ascending:false});
-
-  if(error||!data||data.length===0) {
-    cont.innerHTML=`<p style="color:var(--muted);font-size:.85rem;text-align:center;padding:20px">📭 Aucune commande en attente</p>`;
-    if(stat) stat.textContent='0'; return;
-  }
-  if(stat) stat.textContent=data.length;
-  cont.innerHTML = data.map(m=>`
-    <div class="order-chip">
-      <h4>👤 ${sanitize(m.clients?.nom||'Anonyme')}</h4>
-      <p>📍 ${sanitize(m.clients?.zone||'')}</p>
-      <p class="price-tag">💰 ${Number(m.frais_livraison).toLocaleString('fr-FR')} GNF · ${sanitize(m.mode_paiement||'')}</p>
-    </div>`).join('');
+async function chercherProduitParcode(barcode) {
+const status=document.getElementById(‘scan-status-stock’);
+try{
+const res=await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+const data=await res.json();
+if(data.status===1){
+const nom=data.product.product_name_fr||data.product.product_name||’’;
+if(nom){const inp=document.getElementById(‘p-nom’);if(inp)inp.value=sanitize(nom);toast(’✨ Produit reconnu : ’+nom,‘success’);}
+}else{if(status)status.textContent=‘⚠️ Produit non trouvé’;}
+}catch{if(status)status.textContent=‘⚠️ Erreur réseau’;}
 }
 
-async function chargerPaiements() {
-  const monTel = sess('hx_phone');
-  const cont   = document.getElementById('payments-list');
-  if(!cont) return;
+// Compatibilité (fonctions attendues par d’autres parties du code)
+async function actualiserStock()  { await chargerBoutProduits(); renderStockList(); }
+async function chargerCommandes() {}
+async function chargerPaiements() {}
+function toggleScanner()          {}
 
-  const { data, error } = await _sb.from('transactions')
-    .select('*').eq('destinataire_contact',monTel)
-    .order('created_at',{ascending:false}).limit(5);
+// ════════════════════════════════════════════════════
+// INTERFACE GROSSISTE – onglets enrichis
+// ════════════════════════════════════════════════════
+let grossLots = [];
 
-  if(error||!data||data.length===0) {
-    cont.innerHTML=`<p style="color:var(--muted);font-size:.85rem;text-align:center;padding:20px">Aucun paiement enregistré</p>`;
-    return;
-  }
-  cont.innerHTML = data.map(t=>`
-    <div class="pay-row">
-      <div>
-        <div style="font-weight:700;color:var(--brand)">+${Number(t.montant).toLocaleString('fr-FR')} GNF</div>
-        <div style="font-size:.75rem;color:var(--muted)">${new Date(t.created_at).toLocaleDateString('fr-FR')}</div>
-      </div>
-      <span style="font-size:.8rem;font-weight:700;color:${t.statut==='succes'?'var(--brand)':'#F59E0B'}">${t.statut==='succes'?'✅ Reçu':'⏳ Attente'}</span>
-    </div>`).join('');
+function afficherInterfaceGrossiste() {
+stopGPS();
+const name = sess(‘hx_name’) || ‘Mon Entreprise’;
+document.getElementById(‘main-content’).innerHTML = ` <div style="padding:72px 20px 40px;max-width:1100px;margin:0 auto;"> <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;"> <div> <div style="font-family:'Sora',sans-serif;font-size:1.5rem;font-weight:800;">📦 Grossiste</div> <div style="color:var(--muted);font-size:.85rem;margin-top:3px;">🏢 ${sanitize(name)}</div> </div> <button class="btn btn-ghost btn-sm" onclick="afficherPortailFournisseur()">← Retour</button> </div> <div class="b-tabs"> <button class="b-tab active" onclick="switchGTab('dashboard',this)">📊 Dashboard</button> <button class="b-tab" onclick="switchGTab('lots',this)">📦 Mes Lots</button> <button class="b-tab" onclick="switchGTab('commandes',this)">📬 Commandes</button> </div> <div id="gtab-dashboard"></div> <div id="gtab-lots" style="display:none"></div> <div id="gtab-commandes" style="display:none"></div> </div>`;
+chargerLotsGrossiste().then(() => renderGDashboard());
 }
 
+function switchGTab(tab, btn) {
+[‘dashboard’,‘lots’,‘commandes’].forEach(t => {
+const el = document.getElementById(‘gtab-’+t);
+if(el) el.style.display = ‘none’;
+});
+document.querySelectorAll(’.b-tab’).forEach(b => b.classList.remove(‘active’));
+const el = document.getElementById(‘gtab-’+tab);
+if(el) el.style.display = ‘block’;
+btn.classList.add(‘active’);
+if(tab===‘dashboard’)  renderGDashboard();
+if(tab===‘lots’)       renderGLots();
+if(tab===‘commandes’)  renderGCommandes();
+}
+
+async function chargerLotsGrossiste() {
+const tel = sess(‘hx_phone’);
+const { data } = await _sb.from(‘lots_grossistes’).select(’*’).eq(‘grossiste_contact’,tel).order(‘created_at’,{ascending:false});
+grossLots = data || [];
+}
+
+function renderGDashboard() {
+const zone = document.getElementById(‘gtab-dashboard’);
+if(!zone) return;
+const valeur = grossLots.reduce((s,l) => s + (l.prix_unitaire||0)*(l.quantite||0), 0);
+const total  = grossLots.reduce((s,l) => s + (l.quantite||0), 0);
+
+zone.innerHTML = `<div class="kpi-row"> <div class="kpi-card green"><div class="kpi-icon">💰</div><div class="kpi-val">${(valeur/1000000).toFixed(1)}M</div><div class="kpi-label">Valeur Stock (GNF)</div></div> <div class="kpi-card blue"><div class="kpi-icon">📦</div><div class="kpi-val">${grossLots.length}</div><div class="kpi-label">Références en stock</div></div> <div class="kpi-card orange"><div class="kpi-icon">🔢</div><div class="kpi-val">${total}</div><div class="kpi-label">Unités totales</div></div> </div> <div style="font-family:'Sora',sans-serif;font-size:.9rem;font-weight:800;margin-bottom:12px;">📋 Aperçu des lots</div> ${grossLots.slice(0,5).map(l =>`
+<div class="predict-card">
+<div class="predict-icon">📦</div>
+<div class="predict-info">
+<div class="predict-name">${sanitize(l.designation)}</div>
+<div class="predict-reason">${sanitize(l.categorie||’’)} · Qté: ${l.quantite} · ${sanitize(l.zone||’’)}</div>
+</div>
+<div style="font-family:'Sora',sans-serif;color:var(--brand);font-weight:800;white-space:nowrap;">${Number(l.prix_unitaire).toLocaleString(‘fr-FR’)} GNF</div>
+</div>`).join('')} ${!grossLots.length ? '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">Aucun lot</div></div>' : ''}`;
+}
+
+function renderGLots() {
+const zone = document.getElementById(‘gtab-lots’);
+if(!zone) return;
+zone.innerHTML = `<div class="dash-panel" style="margin-bottom:20px;"> <h3>➕ Ajouter un lot</h3> <div class="form-group"><label>Désignation</label><input type="text" id="g-nom" placeholder="Ex: Carton lait Gloria x48"/></div> <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"> <div class="form-group"><label>Prix unitaire (GNF)</label><input type="number" id="g-prix" placeholder="180000" min="100"/></div> <div class="form-group"><label>Quantité</label><input type="number" id="g-qte" placeholder="50" min="1"/></div> </div> <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"> <div class="form-group"><label>Catégorie</label> <select id="g-cat"><option>Alimentation</option><option>Boissons</option><option>Hygiène</option><option>Électronique</option><option>Textile</option><option>Divers</option></select> </div> <div class="form-group"><label>Zone</label> <select id="g-zone"><option>Kaloum</option><option>Dixinn</option><option>Ratoma</option><option>Matam</option><option>Matoto</option></select> </div> </div> <button class="btn btn-brand btn-full" id="g-btn-pub" onclick="ajouterLotGrossiste()">✅ Publier le lot</button> </div> <div id="g-inventory"> ${grossLots.map(l =>`
+<div class="dash-panel" style="margin-bottom:10px;display:flex;align-items:center;gap:12px;">
+<div style="font-size:1.6rem;">📦</div>
+<div style="flex:1;">
+<div style="font-weight:800;font-size:.9rem;">${sanitize(l.designation)}</div>
+<div style="font-size:.75rem;color:var(--muted);">${sanitize(l.categorie||’’)} · Qté: ${l.quantite} · ${sanitize(l.zone||’’)}</div>
+</div>
+<div style="font-family:'Sora',sans-serif;color:var(--brand);font-weight:800;font-size:.9rem;">${Number(l.prix_unitaire).toLocaleString(‘fr-FR’)} GNF</div>
+<button class="inv-del-btn" onclick="supprimerLotGrossiste('${sanitize(l.id)}')">✕</button>
+</div>`).join('')} ${!grossLots.length ? '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">Aucun lot</div><div class="empty-sub">Ajoutez votre premier lot.</div></div>' : ''} </div>`;
+}
+
+async function ajouterLotGrossiste() {
+const nom  = document.getElementById(‘g-nom’)?.value?.trim();
+const prix = parseInt(document.getElementById(‘g-prix’)?.value);
+const qte  = parseInt(document.getElementById(‘g-qte’)?.value);
+const cat  = document.getElementById(‘g-cat’)?.value;
+const zone = document.getElementById(‘g-zone’)?.value;
+const tel  = sess(‘hx_phone’);
+if(!nom || isNaN(prix) || prix < 100 || isNaN(qte) || qte < 1) { toast(‘Remplissez tous les champs correctement’,‘warn’); return; }
+const btn = document.getElementById(‘g-btn-pub’);
+if(btn) { btn.disabled=true; btn.textContent=‘⏳…’; }
+const { error } = await _sb.from(‘lots_grossistes’).insert([{
+designation:nom, prix_unitaire:prix, quantite:qte, categorie:cat, zone, grossiste_contact:tel, created_at:new Date().toISOString()
+}]);
+if(error) { toast(‘Erreur: ‘+error.message,‘error’); }
+else {
+document.getElementById(‘g-nom’).value=’’;
+document.getElementById(‘g-prix’).value=’’;
+document.getElementById(‘g-qte’).value=’’;
+toast(‘✅ Lot publié !’,‘success’);
+await chargerLotsGrossiste();
+renderGLots();
+renderGDashboard();
+}
+if(btn) { btn.disabled=false; btn.textContent=‘✅ Publier le lot’; }
+}
+
+async function supprimerLotGrossiste(id) {
+const ok = await hxDialog({ title:‘Supprimer ce lot ?’, msg:‘Cette action est irréversible.’, confirm:‘Supprimer’ });
+if(!ok) return;
+const { error } = await _sb.from(‘lots_grossistes’).delete().eq(‘id’,id);
+if(error) { toast(’Erreur: ’+error.message,‘error’); return; }
+grossLots = grossLots.filter(l => l.id != id);
+toast(‘Lot supprimé’,‘success’);
+renderGLots();
+renderGDashboard();
+}
+
+async function renderGCommandes() {
+const zone = document.getElementById(‘gtab-commandes’);
+if(!zone) return;
+zone.innerHTML = ‘<div class="spinner-wrap"><div class="spinner"></div></div>’;
+const tel = sess(‘hx_phone’);
+const { data, error } = await _sb.from(‘missions’).select(’*,clients(nom,zone)’).eq(‘vendeur_id’,tel).eq(‘statut’,‘en_attente’).order(‘created_at’,{ascending:false});
+if(error||!data||!data.length) {
+zone.innerHTML = ‘<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">Aucune commande</div></div>’;
+return;
+}
+zone.innerHTML = data.map(m => ` <div class="order-chip"> <h4>👤 ${sanitize(m.clients?.nom||'Anonyme')}</h4> <p>📍 ${sanitize(m.clients?.zone||'')} · 🕒 ${new Date(m.created_at).toLocaleTimeString('fr-FR')}</p> <p class="price-tag">💰 ${Number(m.frais_livraison).toLocaleString('fr-FR')} GNF · ${sanitize(m.mode_paiement||'')}</p> </div>`).join(’’);
+}
+
+// ════════════════════════════════════════════════════
+// INTERFACE IMPORTATEUR – onglets enrichis
+// ════════════════════════════════════════════════════
+let importCargaisons = [];
+
+function afficherInterfaceImportateur() {
+stopGPS();
+const name = sess(‘hx_name’) || ‘Ma Société’;
+document.getElementById(‘main-content’).innerHTML = ` <div style="padding:72px 20px 40px;max-width:1100px;margin:0 auto;"> <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;"> <div> <div style="font-family:'Sora',sans-serif;font-size:1.5rem;font-weight:800;">🚢 Importateur</div> <div style="color:var(--muted);font-size:.85rem;margin-top:3px;">🌍 ${sanitize(name)}</div> </div> <button class="btn btn-ghost btn-sm" onclick="afficherPortailFournisseur()">← Retour</button> </div> <div class="b-tabs"> <button class="b-tab active" onclick="switchITab('dashboard',this)">📊 Dashboard</button> <button class="b-tab" onclick="switchITab('cargaisons',this)">🚢 Cargaisons</button> <button class="b-tab" onclick="switchITab('catalogue',this)">🛍 Catalogue</button> </div> <div id="itab-dashboard"></div> <div id="itab-cargaisons" style="display:none"></div> <div id="itab-catalogue" style="display:none"></div> </div>`;
+chargerCargaisons().then(() => renderIDashboard());
+}
+
+function switchITab(tab, btn) {
+[‘dashboard’,‘cargaisons’,‘catalogue’].forEach(t => {
+const el = document.getElementById(‘itab-’+t);
+if(el) el.style.display = ‘none’;
+});
+document.querySelectorAll(’.b-tab’).forEach(b => b.classList.remove(‘active’));
+const el = document.getElementById(‘itab-’+tab);
+if(el) el.style.display = ‘block’;
+btn.classList.add(‘active’);
+if(tab===‘dashboard’)  renderIDashboard();
+if(tab===‘cargaisons’) renderICargaisons();
+if(tab===‘catalogue’)  renderICatalogue();
+}
+
+async function chargerCargaisons() {
+const tel = sess(‘hx_phone’);
+const { data } = await _sb.from(‘cargaisons_importateurs’).select(’*’).eq(‘importateur_contact’,tel).order(‘created_at’,{ascending:false});
+importCargaisons = data || [];
+}
+
+function renderIDashboard() {
+const zone = document.getElementById(‘itab-dashboard’);
+if(!zone) return;
+const valTotale = importCargaisons.reduce((s,c) => s + (c.valeur_estimee||0), 0);
+const enTransit = importCargaisons.filter(c => c.statut===‘en_transit’).length;
+const enDouane  = importCargaisons.filter(c => c.statut===‘en_douane’).length;
+const dispos    = importCargaisons.filter(c => c.statut===‘disponible’).length;
+const sl = { en_transit:‘🚢 Transit’, en_douane:‘🏛 Douane’, disponible:‘✅ Disponible’ };
+
+zone.innerHTML = `<div class="kpi-row"> <div class="kpi-card blue"><div class="kpi-icon">🚢</div><div class="kpi-val">${enTransit}</div><div class="kpi-label">En Transit</div></div> <div class="kpi-card orange"><div class="kpi-icon">🏛</div><div class="kpi-val">${enDouane}</div><div class="kpi-label">En Douane</div></div> <div class="kpi-card green"><div class="kpi-icon">✅</div><div class="kpi-val">${dispos}</div><div class="kpi-label">Disponibles</div></div> <div class="kpi-card green"><div class="kpi-icon">💰</div><div class="kpi-val">${(valTotale/1000000).toFixed(1)}M</div><div class="kpi-label">Valeur Totale (GNF)</div></div> </div> <div style="font-family:'Sora',sans-serif;font-size:.9rem;font-weight:800;margin-bottom:12px;">📦 Dernières Cargaisons</div> ${importCargaisons.slice(0,5).map(c =>`
+<div class="predict-card">
+<div class="predict-icon">🚢</div>
+<div class="predict-info">
+<div class="predict-name">${sanitize(c.designation)}</div>
+<div class="predict-reason">${sanitize(c.pays_origine||’’)} · ${sl[c.statut]||c.statut}${c.date_arrivee?’ · Arrivée: ‘+c.date_arrivee:’’}</div>
+</div>
+<div class="predict-badge ${c.statut==='en_transit'?'soon':c.statut==='en_douane'?'urgent':''}">${sl[c.statut]||c.statut}</div>
+</div>`).join('')} ${!importCargaisons.length ? '<div class="empty-state"><div class="empty-icon">🚢</div><div class="empty-title">Aucune cargaison</div></div>' : ''}`;
+}
+
+function renderICargaisons() {
+const zone = document.getElementById(‘itab-cargaisons’);
+if(!zone) return;
+const sl = { en_transit:‘🚢 Transit’, en_douane:‘🏛 Douane’, disponible:‘✅ Disponible’ };
+zone.innerHTML = `<div class="dash-panel" style="margin-bottom:20px;"> <h3>➕ Déclarer une cargaison</h3> <div class="form-group"><label>Désignation</label><input type="text" id="i-nom" placeholder="Ex: Container riz basmati 20T"/></div> <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"> <div class="form-group"><label>Pays d'origine</label><input type="text" id="i-pays" placeholder="Ex: Inde, Maroc..."/></div> <div class="form-group"><label>Valeur estimée (GNF)</label><input type="number" id="i-valeur" placeholder="150000000" min="1"/></div> </div> <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"> <div class="form-group"><label>Statut</label> <select id="i-statut"><option value="en_transit">En transit</option><option value="en_douane">En douane</option><option value="disponible">Disponible</option></select> </div> <div class="form-group"><label>Date d'arrivée</label><input type="date" id="i-date"/></div> </div> <button class="btn btn-brand btn-full" id="i-btn-pub" onclick="ajouterCargaison()">✅ Enregistrer</button> </div> <div id="i-inventory"> ${importCargaisons.map(c =>`
+<div class="dash-panel" style="margin-bottom:10px;display:flex;align-items:center;gap:12px;">
+<div style="font-size:1.6rem;">🚢</div>
+<div style="flex:1;">
+<div style="font-weight:800;font-size:.9rem;">${sanitize(c.designation)}</div>
+<div style="font-size:.75rem;color:var(--muted);">${sanitize(c.pays_origine||’’)} · ${sl[c.statut]||c.statut}${c.date_arrivee?’ · ‘+c.date_arrivee:’’}</div>
+</div>
+<div style="font-family:'Sora',sans-serif;color:var(--brand);font-weight:800;font-size:.88rem;">${Number(c.valeur_estimee).toLocaleString(‘fr-FR’)} GNF</div>
+<button class="inv-del-btn" onclick="supprimerCargaison('${sanitize(c.id)}')">✕</button>
+</div>`).join('')} ${!importCargaisons.length ? '<div class="empty-state"><div class="empty-icon">🚢</div><div class="empty-title">Aucune cargaison</div></div>' : ''} </div>`;
+}
+
+async function ajouterCargaison() {
+const nom    = document.getElementById(‘i-nom’)?.value?.trim();
+const pays   = document.getElementById(‘i-pays’)?.value?.trim();
+const valeur = parseInt(document.getElementById(‘i-valeur’)?.value);
+const statut = document.getElementById(‘i-statut’)?.value;
+const date   = document.getElementById(‘i-date’)?.value;
+const tel    = sess(‘hx_phone’);
+if(!nom || !pays || isNaN(valeur)) { toast(‘Remplissez tous les champs’,‘warn’); return; }
+const btn = document.getElementById(‘i-btn-pub’);
+if(btn) { btn.disabled=true; btn.textContent=‘⏳…’; }
+const { error } = await _sb.from(‘cargaisons_importateurs’).insert([{
+designation:nom, pays_origine:pays, valeur_estimee:valeur, statut, date_arrivee:date||null, importateur_contact:tel, created_at:new Date().toISOString()
+}]);
+if(error) { toast(‘Erreur: ‘+error.message,‘error’); }
+else {
+document.getElementById(‘i-nom’).value=’’;
+document.getElementById(‘i-pays’).value=’’;
+document.getElementById(‘i-valeur’).value=’’;
+toast(‘✅ Cargaison enregistrée !’,‘success’);
+await chargerCargaisons();
+renderICargaisons();
+renderIDashboard();
+}
+if(btn) { btn.disabled=false; btn.textContent=‘✅ Enregistrer’; }
+}
+
+async function supprimerCargaison(id) {
+const ok = await hxDialog({ title:‘Supprimer cette cargaison ?’, msg:‘Cette action est irréversible.’, confirm:‘Supprimer’ });
+if(!ok) return;
+const { error } = await _sb.from(‘cargaisons_importateurs’).delete().eq(‘id’,id);
+if(error) { toast(’Erreur: ’+error.message,‘error’); return; }
+importCargaisons = importCargaisons.filter(c => c.id != id);
+toast(‘Cargaison supprimée’,‘success’);
+renderICargaisons();
+renderIDashboard();
+}
+
+function renderICatalogue() {
+const zone = document.getElementById(‘itab-catalogue’);
+if(!zone) return;
+const dispos = importCargaisons.filter(c => c.statut===‘disponible’);
+if(!dispos.length) {
+zone.innerHTML = ‘<div class="empty-state"><div class="empty-icon">🛍</div><div class="empty-title">Aucun article disponible</div><div class="empty-sub">Passez vos cargaisons en statut “Disponible” pour les publier.</div></div>’;
+return;
+}
+zone.innerHTML = dispos.map(c => ` <div class="dash-panel" style="margin-bottom:12px;"> <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;"> <div> <div style="font-weight:800;">${sanitize(c.designation)}</div> <div style="font-size:.78rem;color:var(--muted);margin-top:4px;">🌍 ${sanitize(c.pays_origine||'')} · ✅ Disponible</div> </div> <div style="font-family:'Sora',sans-serif;color:var(--brand);font-weight:800;">${Number(c.valeur_estimee).toLocaleString('fr-FR')} GNF</div> </div> <button class="btn btn-brand btn-sm btn-full" style="margin-top:12px" onclick="toast('📩 Demande enregistrée !','success')"> 📩 Recevoir les demandes d'achat </button> </div>`).join(’’);
+}
+
+// GROSSISTE – Interface enrichie
+// ════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════
 // 17. LIVREUR
 // ════════════════════════════════════════════════════
 async function afficherLivreur() {
-  stopGPS();
-  const zone = sess('hx_zone') || 'Conakry';
-  document.getElementById('main-content').innerHTML = `
-    <div class="livreur-page">
-      <div class="livreur-header">
-        <div>
-          <div class="topbar-title">🏍️ Coursier</div>
-          <div class="zone-chip">📍 Zone: ${sanitize(zone)}</div>
-        </div>
-        <button class="btn btn-brand btn-sm btn-round" onclick="chercherMissions()">🔄 Actualiser</button>
-      </div>
+stopGPS();
+const zone = sess(‘hx_zone’) || ‘Conakry’;
+document.getElementById(‘main-content’).innerHTML = `
+<div class="livreur-page">
+<div class="livreur-header">
+<div>
+<div class="topbar-title">🏍️ Coursier</div>
+<div class="zone-chip">📍 Zone: ${sanitize(zone)}</div>
+</div>
+<button class="btn btn-brand btn-sm btn-round" onclick="chercherMissions()">🔄 Actualiser</button>
+</div>
 
-      <div class="gps-status-bar">
-        <div class="status-dot"></div>
-        <span style="font-weight:600;font-size:.9rem">GPS actif · Zone ${sanitize(zone)}</span>
-      </div>
+```
+  <div class="gps-status-bar">
+    <div class="status-dot"></div>
+    <span style="font-weight:600;font-size:.9rem">GPS actif · Zone ${sanitize(zone)}</span>
+  </div>
 
-      <div id="missions-area">
-        <div class="empty-state">
-          <div class="empty-icon">🏍️</div>
-          <div class="empty-title">Prêt pour la route ?</div>
-          <div class="empty-sub">Appuyez sur Actualiser pour voir les missions disponibles.</div>
-        </div>
-      </div>
-    </div>`;
+  <div id="missions-area">
+    <div class="empty-state">
+      <div class="empty-icon">🏍️</div>
+      <div class="empty-title">Prêt pour la route ?</div>
+      <div class="empty-sub">Appuyez sur Actualiser pour voir les missions disponibles.</div>
+    </div>
+  </div>
+</div>`;
+```
 
-  await verifierMissionEnCours();
+await verifierMissionEnCours();
 }
 
 async function verifierMissionEnCours() {
-  const tel = sess('hx_phone');
-  const { data } = await _sb.from('missions')
-    .select('*, vendeurs(nom_boutique), clients(nom,zone)')
-    .eq('livreur_id',tel).eq('statut','en_cours').maybeSingle();
-  if(data) afficherTrackingMission(data);
+const tel = sess(‘hx_phone’);
+const { data } = await _sb.from(‘missions’)
+.select(’*, vendeurs(nom_boutique), clients(nom,zone)’)
+.eq(‘livreur_id’,tel).eq(‘statut’,‘en_cours’).maybeSingle();
+if(data) afficherTrackingMission(data);
 }
 
 async function chercherMissions() {
-  const area = document.getElementById('missions-area');
-  const zone = sess('hx_zone');
-  if(!area||!zone) return;
+const area = document.getElementById(‘missions-area’);
+const zone = sess(‘hx_zone’);
+if(!area||!zone) return;
 
-  area.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+area.innerHTML = ‘<div class="spinner-wrap"><div class="spinner"></div></div>’;
 
-  const { data, error } = await _sb.from('missions')
-    .select('id,frais_livraison,statut, vendeurs(nom_boutique,zone), clients(nom,zone)')
-    .eq('client_zone',zone).eq('statut','en_attente')
-    .order('created_at',{ascending:false});
+const { data, error } = await _sb.from(‘missions’)
+.select(‘id,frais_livraison,statut, vendeurs(nom_boutique,zone), clients(nom,zone)’)
+.eq(‘client_zone’,zone).eq(‘statut’,‘en_attente’)
+.order(‘created_at’,{ascending:false});
 
-  if(error||!data||data.length===0) {
-    area.innerHTML=`<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">Aucune mission à ${sanitize(zone)}</div><div class="empty-sub">Revenez dans quelques minutes.</div></div>`;
-    return;
-  }
+if(error||!data||data.length===0) {
+area.innerHTML=`<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">Aucune mission à ${sanitize(zone)}</div><div class="empty-sub">Revenez dans quelques minutes.</div></div>`;
+return;
+}
 
-  area.innerHTML = `<div style="font-weight:700;margin-bottom:14px">📦 ${data.length} mission(s) disponible(s)</div>` +
-    data.map((m,i) => `
-      <div class="mission-card" style="animation-delay:${i*.08}s">
-        <div class="mission-header">
-          <div class="mission-info">
-            <h4>📦 ${sanitize(m.vendeurs?.nom_boutique||'Boutique')}</h4>
-            <p>👤 ${sanitize(m.clients?.nom||'Client')}</p>
-            <p>🏁 ${sanitize(m.clients?.zone||'')}</p>
-          </div>
-          <div class="mission-price">${Number(m.frais_livraison).toLocaleString('fr-FR')} GNF</div>
-        </div>
-        <button class="btn btn-info btn-full" onclick="accepterMission('${sanitize(m.id)}')">✅ Accepter cette course</button>
-      </div>`).join('');
+area.innerHTML = `<div style="font-weight:700;margin-bottom:14px">📦 ${data.length} mission(s) disponible(s)</div>` +
+data.map((m,i) => ` <div class="mission-card" style="animation-delay:${i*.08}s"> <div class="mission-header"> <div class="mission-info"> <h4>📦 ${sanitize(m.vendeurs?.nom_boutique||'Boutique')}</h4> <p>👤 ${sanitize(m.clients?.nom||'Client')}</p> <p>🏁 ${sanitize(m.clients?.zone||'')}</p> </div> <div class="mission-price">${Number(m.frais_livraison).toLocaleString('fr-FR')} GNF</div> </div> <button class="btn btn-info btn-full" onclick="accepterMission('${sanitize(m.id)}')">✅ Accepter cette course</button> </div>`).join(’’);
 }
 
 async function accepterMission(id) {
-  const tel = sess('hx_phone');
-  const { data, error } = await _sb.from('missions')
-    .update({ livreur_id:tel, statut:'en_cours' })
-    .eq('id',id)
-    .select('*, vendeurs(nom_boutique), clients(nom,zone)')
-    .single();
+const tel = sess(‘hx_phone’);
+const { data, error } = await _sb.from(‘missions’)
+.update({ livreur_id:tel, statut:‘en_cours’ })
+.eq(‘id’,id)
+.select(’*, vendeurs(nom_boutique), clients(nom,zone)’)
+.single();
 
-  if(error||!data) { toast('Erreur: '+(error?.message||'Impossible'),'error'); return; }
-  toast('✅ Mission acceptée !','success');
-  afficherTrackingMission(data);
-  demarrerTrackingLivreur(id);
+if(error||!data) { toast(’Erreur: ’+(error?.message||‘Impossible’),‘error’); return; }
+toast(‘✅ Mission acceptée !’,‘success’);
+afficherTrackingMission(data);
+demarrerTrackingLivreur(id);
 }
 
 function afficherTrackingMission(m) {
-  const area = document.getElementById('missions-area');
-  if(!area) return;
-  area.innerHTML = `
-    <div class="mission-card mission-active">
-      <div style="color:var(--brand);font-weight:700;font-size:.9rem;margin-bottom:12px">🟢 Mission en cours</div>
-      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px;margin-bottom:14px">
-        <p style="margin-bottom:8px"><strong>📍 Étape 1 :</strong> Récupérer chez <strong>${sanitize(m.vendeurs?.nom_boutique||'la boutique')}</strong></p>
-        <p><strong>🎯 Étape 2 :</strong> Livrer à <strong>${sanitize(m.clients?.nom||'le client')}</strong> (${sanitize(m.clients?.zone||'')})</p>
-      </div>
-      <div class="mission-price" style="text-align:center;margin-bottom:14px">💰 Gain: ${Number(m.frais_livraison).toLocaleString('fr-FR')} GNF</div>
-      <button class="btn btn-brand btn-full" onclick="genererQR('${sanitize(m.id)}')">📱 Générer le code de validation</button>
-    </div>`;
+const area = document.getElementById(‘missions-area’);
+if(!area) return;
+area.innerHTML = ` <div class="mission-card mission-active"> <div style="color:var(--brand);font-weight:700;font-size:.9rem;margin-bottom:12px">🟢 Mission en cours</div> <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px;margin-bottom:14px"> <p style="margin-bottom:8px"><strong>📍 Étape 1 :</strong> Récupérer chez <strong>${sanitize(m.vendeurs?.nom_boutique||'la boutique')}</strong></p> <p><strong>🎯 Étape 2 :</strong> Livrer à <strong>${sanitize(m.clients?.nom||'le client')}</strong> (${sanitize(m.clients?.zone||'')})</p> </div> <div class="mission-price" style="text-align:center;margin-bottom:14px">💰 Gain: ${Number(m.frais_livraison).toLocaleString('fr-FR')} GNF</div> <button class="btn btn-brand btn-full" onclick="genererQR('${sanitize(m.id)}')">📱 Générer le code de validation</button> </div>`;
 }
 
 function genererQR(commandeId) {
-  document.getElementById('main-content').innerHTML = `
-    <div class="qr-page">
-      <h2>✅ Code de validation</h2>
-      <p>Le client scanne ce code pour confirmer la livraison et débloquer votre paiement.</p>
-      <div id="qrcode-container"></div>
-      <div class="qr-id">ID: ${sanitize(commandeId)}</div>
-      <button class="btn btn-ghost" onclick="afficherLivreur()">← Retour</button>
-    </div>`;
+document.getElementById(‘main-content’).innerHTML = ` <div class="qr-page"> <h2>✅ Code de validation</h2> <p>Le client scanne ce code pour confirmer la livraison et débloquer votre paiement.</p> <div id="qrcode-container"></div> <div class="qr-id">ID: ${sanitize(commandeId)}</div> <button class="btn btn-ghost" onclick="afficherLivreur()">← Retour</button> </div>`;
 
-  new QRCode(document.getElementById('qrcode-container'), {
-    text: `HAILANDX_CONFIRM_${commandeId}`,
-    width:280, height:280
-  });
+new QRCode(document.getElementById(‘qrcode-container’), {
+text: `HAILANDX_CONFIRM_${commandeId}`,
+width:280, height:280
+});
 }
 
 function demarrerTrackingLivreur(missionId) {
-  missionWatchId = navigator.geolocation.watchPosition(
-    async ({ coords:{ latitude, longitude } }) => {
-      await _sb.from('livreurs').update({ latitude, longitude }).eq('telephone', sess('hx_phone')).catch(()=>{});
-    },
-    (e) => console.warn('GPS livreur:',e),
-    { enableHighAccuracy:true, maximumAge:5000 }
-  );
+missionWatchId = navigator.geolocation.watchPosition(
+async ({ coords:{ latitude, longitude } }) => {
+await _sb.from(‘livreurs’).update({ latitude, longitude }).eq(‘telephone’, sess(‘hx_phone’)).catch(()=>{});
+},
+(e) => console.warn(‘GPS livreur:’,e),
+{ enableHighAccuracy:true, maximumAge:5000 }
+);
 }
 
 // ════════════════════════════════════════════════════
 // PULL TO REFRESH
 // ════════════════════════════════════════════════════
 (function initPullToRefresh() {
-  let startY = 0, pulling = false;
-  window.addEventListener('touchstart', e => { startY = e.touches[0].pageY; }, { passive:true });
-  window.addEventListener('touchend', async () => {
-    if(pulling) {
-      pulling = false;
-      const role = sess('hx_role');
-      if(role==='client')      await afficherClient();
-      else if(role==='livreur') await chercherMissions();
-    }
-  }, { passive:true });
-  window.addEventListener('touchmove', e => {
-    if(window.scrollY===0 && e.touches[0].pageY - startY > 80) pulling = true;
-  }, { passive:true });
+let startY = 0, pulling = false;
+window.addEventListener(‘touchstart’, e => { startY = e.touches[0].pageY; }, { passive:true });
+window.addEventListener(‘touchend’, async () => {
+if(pulling) {
+pulling = false;
+const role = sess(‘hx_role’);
+if(role===‘client’)      await afficherClient();
+else if(role===‘livreur’) await chercherMissions();
+}
+}, { passive:true });
+window.addEventListener(‘touchmove’, e => {
+if(window.scrollY===0 && e.touches[0].pageY - startY > 80) pulling = true;
+}, { passive:true });
 })();
 
 </script>
-
 </body>
 </html>
