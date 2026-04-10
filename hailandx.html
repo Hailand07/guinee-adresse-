@@ -20,6 +20,8 @@
 
 <!-- Fonts -->
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@700;800&display=swap" rel="stylesheet"/>
 
 <style>
@@ -861,11 +863,8 @@ body {
 .modal-vente-total { font-family:'Sora',sans-serif; font-size:2rem; color:var(--brand); font-weight:800; text-align:center; margin-bottom:20px; }
 .modal-vente-btns { display:flex; gap:10px; }
 
-</style>
+</style></head>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-
-</head>
 <body>
 
 <!-- ── LOADING ── -->
@@ -1167,7 +1166,10 @@ window.addEventListener('load', async () => {
   if(phone) {
     await verifierProfils(phone);
     if(role === 'client')       afficherClient();
-    else if(role === 'fournisseur') afficherFournisseur();
+    else if(role === 'boutiquier') afficherStock('Boutiquier');
+    else if(role === 'grossiste')  afficherInterfaceGrossiste();
+    else if(role === 'importateur') afficherInterfaceImportateur();
+    else if(role === 'fournisseur') afficherPortailFournisseur();
     else if(role === 'livreur') afficherLivreur();
     else dirigerPremierProfil();
   } else {
@@ -1184,7 +1186,7 @@ function sess(k, v) {
 
 function dirigerPremierProfil() {
   if(userProfiles.client)      { sess('hx_role','client');      afficherClient(); }
-  else if(userProfiles.fournisseur){ sess('hx_role','fournisseur'); afficherFournisseur(); }
+  else if(userProfiles.fournisseur){ sess('hx_role','fournisseur'); afficherPortailFournisseur(); }
   else if(userProfiles.livreur){ sess('hx_role','livreur');     afficherLivreur(); }
   else afficherAccueil();
 }
