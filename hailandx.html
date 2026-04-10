@@ -1138,8 +1138,8 @@ async function verifierProfils(phone) {
     userProfiles.fournisseur= !!rv.data;
     userProfiles.livreur    = !!rl.data;
 
-    const nom  = rc.data?.nom  || rv.data?.nom  || rl.data?.nom;
-    const zone = rc.data?.zone || rl.data?.zone;
+    const nom  = (rc.data && rc.data.nom)  || (rv.data && rv.data.nom)  || (rl.data && rl.data.nom);
+    const zone = (rc.data && rc.data.zone) || (rl.data && rl.data.zone);
     if(nom)  localStorage.setItem('hx_name', nom);
     if(zone) localStorage.setItem('hx_zone', zone);
   } catch(e) { console.error('verifierProfils:', e); }
@@ -1416,7 +1416,7 @@ function afficherConnexion(role) {
 }
 
 async function connexion(role) {
-  const tel = document.getElementById('login-tel')?.value?.trim();
+  const tel = (document.getElementById('login-tel') ? document.getElementById('login-tel').value.trim() : '');
   if(!tel) { toast('Entrez votre numéro','warn'); return; }
 
   const tableMap = { client:'clients', boutiquier:'vendeurs', grossiste:'grossistes', importateur:'importateurs', livreur:'livreurs' };
@@ -1508,8 +1508,8 @@ function afficherInscription(role) {
 }
 
 async function inscription(role) {
-  const nom = document.getElementById('reg-nom')?.value?.trim();
-  const tel = document.getElementById('reg-tel')?.value?.trim();
+  const nom = (document.getElementById('reg-nom') ? document.getElementById('reg-nom').value.trim() : '');
+  const tel = (document.getElementById('reg-tel') ? document.getElementById('reg-tel').value.trim() : '');
 
   if(!nom || !tel) { toast('Remplissez tous les champs','warn'); return; }
   if(tel.length < 9) { toast('Numéro invalide','error'); return; }
@@ -1518,17 +1518,17 @@ async function inscription(role) {
 
   if(role === 'client') {
     if(!clientGPS.lat) { toast('GPS requis pour votre position','warn'); return; }
-    obj.zone = document.getElementById('reg-zone')?.value;
+    obj.zone = (document.getElementById('reg-zone') ? document.getElementById('reg-zone').value : '');
     obj.latitude  = clientGPS.lat;
     obj.longitude = clientGPS.lon;
   } else if(role === 'fournisseur') {
     if(!clientGPS.lat) { toast('GPS requis pour la boutique','warn'); return; }
-    obj.nom_boutique = document.getElementById('reg-shop')?.value?.trim();
+    obj.nom_boutique = (document.getElementById('reg-shop') ? document.getElementById('reg-shop').value.trim() : '');
     obj.latitude  = clientGPS.lat;
     obj.longitude = clientGPS.lon;
   } else if(role === 'livreur') {
     if(!clientGPS.lat) { toast('GPS requis pour votre position de départ','warn'); return; }
-    obj.zone = document.getElementById('reg-zone')?.value;
+    obj.zone = (document.getElementById('reg-zone') ? document.getElementById('reg-zone').value : '');
     obj.latitude  = clientGPS.lat;
     obj.longitude = clientGPS.lon;
   }
@@ -1628,7 +1628,7 @@ function afficherProduits(zone, query='') {
   if(!grid) return;
 
   let liste = _produits;
-  if(query) liste = liste.filter(p => p.nom_produit?.toLowerCase().includes(query.toLowerCase()));
+  if(query) liste = liste.filter(p => (p.nom_produit || '').toLowerCase().includes(query.toLowerCase()));
 
   // Trier : zone proche en premier
   liste = [...liste].sort((a,b)=>{
@@ -1658,7 +1658,7 @@ function afficherProduits(zone, query='') {
 }
 
 function filtrerProduits() {
-  const q = document.getElementById('search-input')?.value || '';
+  const q = (document.getElementById('search-input') ? document.getElementById('search-input').value : '') || '';
   afficherProduits(sess('hx_zone'), q);
 }
 
@@ -1666,7 +1666,7 @@ function filtrerProduits() {
 let clientScannerInst = null;
 
 async function ouvrirScannerConfirmation() {
-  document.getElementById('scanner-overlay')?.classList.remove('hidden');
+  (function(){var _e=document.getElementById('scanner-overlay');if(_e)_e.classList.remove('hidden');})();
   clientScannerInst = new Html5Qrcode('client-reader');
   try {
     await clientScannerInst.start(
@@ -1686,7 +1686,7 @@ async function fermerScannerClient() {
     try { await clientScannerInst.stop(); } catch{}
     clientScannerInst = null;
   }
-  document.getElementById('scanner-overlay')?.classList.add('hidden');
+  (function(){var _e=document.getElementById('scanner-overlay');if(_e)_e.classList.add('hidden');})();
 }
 
 async function validerLivraison(missionId) {
@@ -1707,7 +1707,7 @@ async function commander(produitId, vendeurTel, prix) {
   if(clientLat && vendeurTel) {
     try {
       const { data:v } = await _sb.from('vendeurs').select('latitude,longitude').eq('telephone',vendeurTel).single();
-      if(v?.latitude) {
+      if((v && v.latitude)) {
         const dist = calculerDistance(v.latitude, v.longitude, clientLat, clientLon);
         frais = Math.round(5000 + dist * 2000);
       }
@@ -1719,7 +1719,7 @@ async function commander(produitId, vendeurTel, prix) {
 
 function calculerDistance(lat1,lon1,lat2,lon2) {
   const R=6371, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  const a = Math.pow(Math.sin(dLat/2),2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.pow(Math.sin(dLon/2),2);
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
@@ -1800,19 +1800,19 @@ function afficherPortailFournisseur() {
       <div class="supplier-portal-title">📊 Espace Commerçant</div>
       <div class="supplier-portal-sub">Choisissez votre type de compte pour vous connecter ou vous inscrire</div>
       <div class="supplier-type-grid">
-        <div class="supplier-type-card" onclick="accederEspaceCommerçant('boutiquier')">
+        <div class="supplier-type-card" onclick="accederEspaceCommercant('boutiquier')">
           <div class="stc-icon">🏪</div>
           <div class="stc-title">Boutiquier</div>
           <div class="stc-desc">Gérez vos stocks et suivez vos ventes locales</div>
           <button class="stc-cta">Accéder</button>
         </div>
-        <div class="supplier-type-card" onclick="accederEspaceCommerçant('grossiste')">
+        <div class="supplier-type-card" onclick="accederEspaceCommercant('grossiste')">
           <div class="stc-icon">📦</div>
           <div class="stc-title">Grossiste</div>
           <div class="stc-desc">Optimisez vos volumes et réseaux de distribution</div>
           <button class="stc-cta">Accéder</button>
         </div>
-        <div class="supplier-type-card" onclick="accederEspaceCommerçant('importateur')">
+        <div class="supplier-type-card" onclick="accederEspaceCommercant('importateur')">
           <div class="stc-icon">🚢</div>
           <div class="stc-title">Importateur</div>
           <div class="stc-desc">Suivez cargaisons et logistique internationale</div>
@@ -1826,7 +1826,7 @@ function afficherPortailFournisseur() {
 }
 
 // Demande connexion/inscription selon l'espace commerçant choisi
-async function accederEspaceCommerçant(role) {
+async function accederEspaceCommercant(role) {
   const phone = sess('hx_phone');
   const roleActuel = sess('hx_role');
 
@@ -1845,11 +1845,11 @@ async function accederEspaceCommerçant(role) {
     confirm:'Connexion', cancel:'Inscription'
   });
   if(ok) afficherConnexion(role);
-  else   afficherInscriptionCommerçant(role);
+  else   afficherInscriptionCommercant(role);
 }
 
 // Inscription spécifique Grossiste / Importateur
-function afficherInscriptionCommerçant(role) {
+function afficherInscriptionCommercant(role) {
   const icons  = { boutiquier:'🏪', grossiste:'📦', importateur:'🚢' };
   const labels = { boutiquier:'Boutiquier', grossiste:'Grossiste', importateur:'Importateur' };
   const extraFields = {
@@ -1910,7 +1910,7 @@ function afficherInscriptionCommerçant(role) {
           <input type="tel" id="reg-tel" placeholder="Ex: 622 00 00 00" autocomplete="tel"/>
         </div>
         ${extraFields[role]||''}
-        <button class="btn btn-brand btn-full" id="btn-save-${role}" onclick="inscriptionCommerçant('${role}')" disabled style="margin-bottom:10px">
+        <button class="btn btn-brand btn-full" id="btn-save-${role}" onclick="inscriptionCommercant('${role}')" disabled style="margin-bottom:10px">
           Créer mon compte
         </button>
         <button class="btn btn-ghost btn-full" onclick="afficherPortailFournisseur()">← Retour</button>
@@ -1918,9 +1918,9 @@ function afficherInscriptionCommerçant(role) {
     </div>`;
 }
 
-async function inscriptionCommerçant(role) {
-  const nom = document.getElementById('reg-nom')?.value?.trim();
-  const tel = document.getElementById('reg-tel')?.value?.trim();
+async function inscriptionCommercant(role) {
+  const nom = (document.getElementById('reg-nom') ? document.getElementById('reg-nom').value.trim() : '');
+  const tel = (document.getElementById('reg-tel') ? document.getElementById('reg-tel').value.trim() : '');
 
   if(!nom || !tel) { toast('Remplissez tous les champs','warn'); return; }
   if(tel.length < 9) { toast('Numéro invalide','error'); return; }
@@ -1929,13 +1929,13 @@ async function inscriptionCommerçant(role) {
   const obj = { nom, telephone: tel, latitude: clientGPS.lat, longitude: clientGPS.lon };
 
   if(role === 'boutiquier') {
-    obj.nom_boutique = document.getElementById('reg-shop')?.value?.trim();
+    obj.nom_boutique = (document.getElementById('reg-shop') ? document.getElementById('reg-shop').value.trim() : '');
   } else if(role === 'grossiste') {
-    obj.nom_entreprise = document.getElementById('reg-shop')?.value?.trim();
-    obj.zone = document.getElementById('reg-zone')?.value;
+    obj.nom_entreprise = (document.getElementById('reg-shop') ? document.getElementById('reg-shop').value.trim() : '');
+    obj.zone = (document.getElementById('reg-zone') ? document.getElementById('reg-zone').value : '');
   } else if(role === 'importateur') {
-    obj.nom_societe = document.getElementById('reg-shop')?.value?.trim();
-    obj.pays_origine = document.getElementById('reg-pays')?.value?.trim();
+    obj.nom_societe = (document.getElementById('reg-shop') ? document.getElementById('reg-shop').value.trim() : '');
+    obj.pays_origine = (document.getElementById('reg-pays') ? document.getElementById('reg-pays').value.trim() : '');
   }
 
   const btn = document.getElementById(`btn-save-${role}`);
@@ -2212,10 +2212,10 @@ function renderVente() {
 }
 
 function filterProdVente() {
-  const q = (document.getElementById('vente-search-inp')?.value||'').toLowerCase();
+  const q = ((document.getElementById('vente-search-inp') ? document.getElementById('vente-search-inp').value : '')||'').toLowerCase();
   let liste = boutProduits;
   if(boutActiveCat!=='Tous') liste = liste.filter(p=>(p.categorie||'Divers')===boutActiveCat);
-  if(q) liste = liste.filter(p=>p.nom_produit?.toLowerCase().includes(q));
+  if(q) liste = liste.filter(p=>(p.nom_produit || '').toLowerCase().includes(q));
   renderProdVenteList(liste);
 }
 
@@ -2444,13 +2444,13 @@ zone.innerHTML=ventes.map(v=>` <div style="background:var(--surface);border:1.5p
 
 // ═══ Fonctions Stock partagées ═══
 async function ajouterProduit() {
-const nom=document.getElementById(‘p-nom’)?.value?.trim();
-const prix=parseInt(document.getElementById(‘p-prix’)?.value)||0;
-const achat=parseInt(document.getElementById(‘p-achat’)?.value)||0;
-const stock=parseInt(document.getElementById(‘p-stock’)?.value)||0;
-const smax=parseInt(document.getElementById(‘p-stockmax’)?.value)||100;
-const cat=document.getElementById(‘p-cat’)?.value;
-const zone=document.getElementById(‘p-zone’)?.value;
+const nom=(document.getElementById(‘p-nom’) ? document.getElementById(‘p-nom’).value.trim() : ‘’);
+const prix=parseInt((document.getElementById(‘p-prix’) ? document.getElementById(‘p-prix’).value : ‘’))||0;
+const achat=parseInt((document.getElementById(‘p-achat’) ? document.getElementById(‘p-achat’).value : ‘’))||0;
+const stock=parseInt((document.getElementById(‘p-stock’) ? document.getElementById(‘p-stock’).value : ‘’))||0;
+const smax=parseInt((document.getElementById(‘p-stockmax’) ? document.getElementById(‘p-stockmax’).value : ‘’))||100;
+const cat=(document.getElementById(‘p-cat’) ? document.getElementById(‘p-cat’).value : ‘’);
+const zone=(document.getElementById(‘p-zone’) ? document.getElementById(‘p-zone’).value : ‘’);
 const tel=sess(‘hx_phone’);
 if(!nom||prix<100){toast(‘Remplissez nom et prix (min 100 GNF)’,‘warn’);return;}
 const btn=document.getElementById(‘btn-publier’);
@@ -2554,11 +2554,11 @@ zone.innerHTML = `<div class="dash-panel" style="margin-bottom:20px;"> <h3>➕ A
 }
 
 async function ajouterLotGrossiste() {
-const nom  = document.getElementById(‘g-nom’)?.value?.trim();
-const prix = parseInt(document.getElementById(‘g-prix’)?.value);
-const qte  = parseInt(document.getElementById(‘g-qte’)?.value);
-const cat  = document.getElementById(‘g-cat’)?.value;
-const zone = document.getElementById(‘g-zone’)?.value;
+const nom  = (document.getElementById(‘g-nom’) ? document.getElementById(‘g-nom’).value.trim() : ‘’);
+const prix = parseInt((document.getElementById(‘g-prix’) ? document.getElementById(‘g-prix’).value : ‘’));
+const qte  = parseInt((document.getElementById(‘g-qte’) ? document.getElementById(‘g-qte’).value : ‘’));
+const cat  = (document.getElementById(‘g-cat’) ? document.getElementById(‘g-cat’).value : ‘’);
+const zone = (document.getElementById(‘g-zone’) ? document.getElementById(‘g-zone’).value : ‘’);
 const tel  = sess(‘hx_phone’);
 if(!nom || isNaN(prix) || prix < 100 || isNaN(qte) || qte < 1) { toast(‘Remplissez tous les champs correctement’,‘warn’); return; }
 const btn = document.getElementById(‘g-btn-pub’);
@@ -2600,7 +2600,7 @@ if(error||!data||!data.length) {
 zone.innerHTML = ‘<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">Aucune commande</div></div>’;
 return;
 }
-zone.innerHTML = data.map(m => ` <div class="order-chip"> <h4>👤 ${sanitize(m.clients?.nom||'Anonyme')}</h4> <p>📍 ${sanitize(m.clients?.zone||'')} · 🕒 ${new Date(m.created_at).toLocaleTimeString('fr-FR')}</p> <p class="price-tag">💰 ${Number(m.frais_livraison).toLocaleString('fr-FR')} GNF · ${sanitize(m.mode_paiement||'')}</p> </div>`).join(’’);
+zone.innerHTML = data.map(m => ` <div class="order-chip"> <h4>👤 ${sanitize((m.clients && m.clients.nom)||'Anonyme')}</h4> <p>📍 ${sanitize((m.clients && m.clients.zone)||'')} · 🕒 ${new Date(m.created_at).toLocaleTimeString('fr-FR')}</p> <p class="price-tag">💰 ${Number(m.frais_livraison).toLocaleString('fr-FR')} GNF · ${sanitize(m.mode_paiement||'')}</p> </div>`).join(’’);
 }
 
 // ════════════════════════════════════════════════════
@@ -2672,11 +2672,11 @@ zone.innerHTML = `<div class="dash-panel" style="margin-bottom:20px;"> <h3>➕ D
 }
 
 async function ajouterCargaison() {
-const nom    = document.getElementById(‘i-nom’)?.value?.trim();
-const pays   = document.getElementById(‘i-pays’)?.value?.trim();
-const valeur = parseInt(document.getElementById(‘i-valeur’)?.value);
-const statut = document.getElementById(‘i-statut’)?.value;
-const date   = document.getElementById(‘i-date’)?.value;
+const nom    = (document.getElementById(‘i-nom’) ? document.getElementById(‘i-nom’).value.trim() : ‘’);
+const pays   = (document.getElementById(‘i-pays’) ? document.getElementById(‘i-pays’).value.trim() : ‘’);
+const valeur = parseInt((document.getElementById(‘i-valeur’) ? document.getElementById(‘i-valeur’).value : ‘’));
+const statut = (document.getElementById(‘i-statut’) ? document.getElementById(‘i-statut’).value : ‘’);
+const date   = (document.getElementById(‘i-date’) ? document.getElementById(‘i-date’).value : ‘’);
 const tel    = sess(‘hx_phone’);
 if(!nom || !pays || isNaN(valeur)) { toast(‘Remplissez tous les champs’,‘warn’); return; }
 const btn = document.getElementById(‘i-btn-pub’);
@@ -2782,7 +2782,7 @@ return;
 }
 
 area.innerHTML = `<div style="font-weight:700;margin-bottom:14px">📦 ${data.length} mission(s) disponible(s)</div>` +
-data.map((m,i) => ` <div class="mission-card" style="animation-delay:${i*.08}s"> <div class="mission-header"> <div class="mission-info"> <h4>📦 ${sanitize(m.vendeurs?.nom_boutique||'Boutique')}</h4> <p>👤 ${sanitize(m.clients?.nom||'Client')}</p> <p>🏁 ${sanitize(m.clients?.zone||'')}</p> </div> <div class="mission-price">${Number(m.frais_livraison).toLocaleString('fr-FR')} GNF</div> </div> <button class="btn btn-info btn-full" onclick="accepterMission('${sanitize(m.id)}')">✅ Accepter cette course</button> </div>`).join(’’);
+data.map((m,i) => ` <div class="mission-card" style="animation-delay:${i*.08}s"> <div class="mission-header"> <div class="mission-info"> <h4>📦 ${sanitize((m.vendeurs && m.vendeurs.nom_boutique)||'Boutique')}</h4> <p>👤 ${sanitize((m.clients && m.clients.nom)||'Client')}</p> <p>🏁 ${sanitize((m.clients && m.clients.zone)||'')}</p> </div> <div class="mission-price">${Number(m.frais_livraison).toLocaleString('fr-FR')} GNF</div> </div> <button class="btn btn-info btn-full" onclick="accepterMission('${sanitize(m.id)}')">✅ Accepter cette course</button> </div>`).join(’’);
 }
 
 async function accepterMission(id) {
@@ -2793,7 +2793,7 @@ const { data, error } = await _sb.from(‘missions’)
 .select(’*, vendeurs(nom_boutique), clients(nom,zone)’)
 .single();
 
-if(error||!data) { toast(’Erreur: ’+(error?.message||‘Impossible’),‘error’); return; }
+if(error||!data) { toast(’Erreur: ’+((error && error.message)||‘Impossible’),‘error’); return; }
 toast(‘✅ Mission acceptée !’,‘success’);
 afficherTrackingMission(data);
 demarrerTrackingLivreur(id);
@@ -2802,7 +2802,7 @@ demarrerTrackingLivreur(id);
 function afficherTrackingMission(m) {
 const area = document.getElementById(‘missions-area’);
 if(!area) return;
-area.innerHTML = ` <div class="mission-card mission-active"> <div style="color:var(--brand);font-weight:700;font-size:.9rem;margin-bottom:12px">🟢 Mission en cours</div> <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px;margin-bottom:14px"> <p style="margin-bottom:8px"><strong>📍 Étape 1 :</strong> Récupérer chez <strong>${sanitize(m.vendeurs?.nom_boutique||'la boutique')}</strong></p> <p><strong>🎯 Étape 2 :</strong> Livrer à <strong>${sanitize(m.clients?.nom||'le client')}</strong> (${sanitize(m.clients?.zone||'')})</p> </div> <div class="mission-price" style="text-align:center;margin-bottom:14px">💰 Gain: ${Number(m.frais_livraison).toLocaleString('fr-FR')} GNF</div> <button class="btn btn-brand btn-full" onclick="genererQR('${sanitize(m.id)}')">📱 Générer le code de validation</button> </div>`;
+area.innerHTML = ` <div class="mission-card mission-active"> <div style="color:var(--brand);font-weight:700;font-size:.9rem;margin-bottom:12px">🟢 Mission en cours</div> <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px;margin-bottom:14px"> <p style="margin-bottom:8px"><strong>📍 Étape 1 :</strong> Récupérer chez <strong>${sanitize((m.vendeurs && m.vendeurs.nom_boutique)||'la boutique')}</strong></p> <p><strong>🎯 Étape 2 :</strong> Livrer à <strong>${sanitize((m.clients && m.clients.nom)||'le client')}</strong> (${sanitize((m.clients && m.clients.zone)||'')})</p> </div> <div class="mission-price" style="text-align:center;margin-bottom:14px">💰 Gain: ${Number(m.frais_livraison).toLocaleString('fr-FR')} GNF</div> <button class="btn btn-brand btn-full" onclick="genererQR('${sanitize(m.id)}')">📱 Générer le code de validation</button> </div>`;
 }
 
 function genererQR(commandeId) {
