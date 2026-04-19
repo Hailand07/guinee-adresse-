@@ -18,15 +18,10 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-<!-- HailandMap – Leaflet -->
+<!-- HailandMap Vision – MapLibre GL (carte 3D nocturne) -->
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<!-- HailandMap – Routing Machine -->
-
-<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css"/>
-<script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+<link href="https://unpkg.com/maplibre-gl@4.1.0/dist/maplibre-gl.css" rel="stylesheet"/>
+<script src="https://unpkg.com/maplibre-gl@4.1.0/dist/maplibre-gl.js"></script>
 
 <!-- Fonts -->
 
@@ -1120,119 +1115,251 @@ body {
 /* Overlay plein écran carte */
 .map-overlay {
   position: fixed; inset: 0; z-index: 4000;
-  background: var(--bg);
+  background: #0d0f14;
   display: flex; flex-direction: column;
   animation: fadeIn .25s ease;
 }
 .map-overlay.hidden { display: none !important; }
 
-/* Topbar de la carte */
+/* Topbar de la carte – style nocturne permanent */
 .topbar-map {
-  position: relative; z-index: 4001;
-  padding: 52px 16px 14px;
+  position: relative; z-index: 4001; flex-shrink: 0;
+  padding: 52px 16px 12px;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  background: rgba(255,255,255,.95); backdrop-filter: blur(8px);
-  border-bottom: 1.5px solid var(--border);
-  box-shadow: 0 4px 16px rgba(0,0,0,.06);
-  flex-shrink: 0;
+  background: rgba(10,12,18,.92); backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(245,166,35,.15);
+  box-shadow: 0 4px 24px rgba(0,0,0,.5);
 }
-.topbar-map-title { font-family:'Sora',sans-serif; font-size:1.15rem; font-weight:800; }
-.topbar-map-title span { color: var(--brand); }
+.topbar-map-title {
+  font-family:'Sora',sans-serif; font-size:1.15rem; font-weight:800; color:#EEF0F6;
+}
+.topbar-map-title .map-title-accent { color: #F5A623; }
+.topbar-map-title .map-title-badge {
+  font-size:.62rem; font-family:'Plus Jakarta Sans',sans-serif;
+  font-weight:700; color: rgba(245,166,35,.7); letter-spacing:.5px;
+  text-transform: uppercase; margin-left:4px; vertical-align:middle;
+}
 .map-legend {
-  display: flex; align-items: center; gap: 14px;
-  font-size: .76rem; font-weight: 700; color: var(--muted);
+  display: flex; align-items: center; gap: 12px;
+  font-size: .72rem; font-weight: 700; color: rgba(238,240,246,.5);
 }
 .map-legend-dot {
-  width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+  width: 8px; height: 8px; border-radius: 50%; display: inline-block;
   margin-right: 4px; vertical-align: middle;
 }
-
-/* Conteneur carte */
-#hailand-map-container {
-  flex: 1; width: 100%; z-index: 4000;
-  min-height: 0; /* important pour flexbox */
+/* Badge météo / heure */
+.map-time-badge {
+  font-size:.72rem; color:rgba(245,166,35,.8); font-weight:700;
+  display:flex; align-items:center; gap:4px;
 }
 
-/* Barre infos bas carte */
+/* Conteneur MapLibre */
+#hailand-map-container {
+  flex: 1; width: 100%; z-index: 4000; min-height: 0;
+}
+
+/* Barre bas carte – nocturne */
 .map-bottom-bar {
-  position: relative; z-index: 4001;
-  background: rgba(255,255,255,.97); backdrop-filter: blur(8px);
-  border-top: 1.5px solid var(--border);
+  position: relative; z-index: 4001; flex-shrink: 0;
+  background: rgba(10,12,18,.92); backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(245,166,35,.12);
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  flex-shrink: 0;
+  box-shadow: 0 -4px 24px rgba(0,0,0,.4);
 }
 .map-stats { display: flex; gap: 20px; }
-.map-stat { text-align: center; }
-.map-stat-val  { font-family:'Sora',sans-serif; font-size:1rem; font-weight:800; color:var(--brand); display:block; }
-.map-stat-label{ font-size:.68rem; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.3px; }
+.map-stat  { text-align: center; }
+.map-stat-val   { font-family:'Sora',sans-serif; font-size:1rem; font-weight:800; color:#F5A623; display:block; }
+.map-stat-label { font-size:.65rem; color:rgba(238,240,246,.4); font-weight:700; text-transform:uppercase; letter-spacing:.4px; }
 
-/* Popup marker style */
-.btq-popup {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  min-width: 160px;
+/* ── Popup MapLibre style nocturne ── */
+.maplibregl-popup-content {
+  background: #1e2535 !important;
+  color: #EEF0F6 !important;
+  border: 1px solid rgba(245,166,35,.35) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,.6) !important;
+  padding: 14px 16px 12px !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  min-width: 170px;
 }
-.btq-popup strong { color: var(--brand); font-size: .9rem; display: block; margin-bottom: 3px; }
-.btq-popup small  { color: var(--muted); font-size: .75rem; display: block; margin-bottom: 8px; }
+.maplibregl-popup-tip { border-top-color: #1e2535 !important; border-bottom-color: #1e2535 !important; }
+.maplibregl-popup-close-button {
+  color: rgba(238,240,246,.5) !important; font-size:1.1rem !important;
+  right:6px !important; top:6px !important;
+}
+.maplibregl-popup-close-button:hover { color:#EEF0F6 !important; }
 
-/* Bouton itinéraire dans popup */
+.btq-popup strong { color: #F5A623; font-size: .9rem; display:block; margin-bottom:3px; }
+.btq-popup small  { color: rgba(238,240,246,.5); font-size:.72rem; display:block; margin-bottom:10px; }
+
+/* Boutons dans popup */
 .btn-itineraire {
-  background: var(--brand); color: #fff;
-  border: none; padding: 8px 12px; border-radius: var(--radius-xs);
-  cursor: pointer; font-size: .78rem; font-weight: 700;
-  width: 100%; transition: background .2s;
+  background: #F5A623; color: #0D0F14;
+  border: none; padding: 8px 12px; border-radius: 8px;
+  cursor: pointer; font-size: .78rem; font-weight: 800;
+  width: 100%; transition: background .2s; margin-bottom:5px;
 }
-.btn-itineraire:hover { background: var(--brand-dark); }
-
-/* Bouton commande depuis popup */
+.btn-itineraire:hover { background: #d4881a; }
 .btn-commander-popup {
-  background: var(--accent); color: #fff;
-  border: none; padding: 7px 12px; border-radius: var(--radius-xs);
+  background: rgba(245,166,35,.12); color: #F5A623;
+  border: 1px solid rgba(245,166,35,.3); padding: 7px 12px; border-radius: 8px;
   cursor: pointer; font-size: .78rem; font-weight: 700;
-  width: 100%; margin-top: 5px; transition: background .2s;
+  width: 100%; transition: .2s;
 }
-.btn-commander-popup:hover { background: #e55a22; }
+.btn-commander-popup:hover { background: rgba(245,166,35,.22); }
 
-/* Masquer le panneau texte Routing Machine (trop verbeux sur mobile) */
-.leaflet-routing-container { display: none !important; }
-
-/* Marqueur utilisateur */
-.user-pos-icon {
-  background: transparent; border: none;
-}
+/* Marqueur utilisateur (point bleu pulsé) */
 .user-pos-marker {
-  width: 18px; height: 18px; border-radius: 50%;
-  background: var(--info); border: 3px solid #fff;
-  box-shadow: 0 0 0 4px rgba(59,130,246,.25), 0 4px 12px rgba(59,130,246,.4);
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #60A5FA; border: 3px solid rgba(255,255,255,.9);
+  box-shadow: 0 0 0 4px rgba(96,165,250,.25), 0 0 16px rgba(96,165,250,.5);
   animation: pulse-blue 2s infinite;
 }
 @keyframes pulse-blue {
-  0%,100%{ box-shadow:0 0 0 4px rgba(59,130,246,.25),0 4px 12px rgba(59,130,246,.4); }
-  50%    { box-shadow:0 0 0 10px rgba(59,130,246,.08),0 4px 12px rgba(59,130,246,.4); }
+  0%,100%{ box-shadow:0 0 0 4px rgba(96,165,250,.25),0 0 16px rgba(96,165,250,.5); }
+  50%    { box-shadow:0 0 0 12px rgba(96,165,250,.06),0 0 24px rgba(96,165,250,.3); }
 }
 
-/* Marqueur boutiquiers */
-.btq-marker-icon { background: transparent; border: none; }
+/* Marqueur boutiquiers dorés */
 .btq-dot {
-  width: 14px; height: 14px; border-radius: 50%;
-  background: var(--brand); border: 2.5px solid #fff;
-  box-shadow: 0 0 0 3px rgba(0,200,81,.2), 0 3px 8px rgba(0,200,81,.35);
-  transition: transform .2s;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #F5A623; border: 2.5px solid rgba(255,255,255,.9);
+  box-shadow: 0 0 0 3px rgba(245,166,35,.25), 0 0 12px rgba(245,166,35,.45);
 }
 
-/* Panel itinéraire */
+/* Marqueur livreur */
+.livreur-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #60A5FA; border: 2px solid #fff;
+  box-shadow: 0 0 8px rgba(96,165,250,.6);
+  animation: pulse-blue 1.5s infinite;
+}
+
+/* Panel itinéraire – nocturne */
 .route-info-panel {
   position: absolute; bottom: 70px; left: 12px; right: 12px; z-index: 4002;
-  background: var(--surface); border-radius: var(--radius-sm);
-  padding: 14px 16px; box-shadow: var(--shadow-lg);
-  border: 1.5px solid var(--brand);
+  background: rgba(22,27,37,.96); border-radius: 12px;
+  padding: 14px 16px; backdrop-filter: blur(10px);
+  border: 1px solid rgba(245,166,35,.3);
+  box-shadow: 0 8px 32px rgba(0,0,0,.6);
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   animation: fadeUp .3s ease;
 }
 .route-info-panel.hidden { display: none !important; }
 .route-details { flex: 1; }
-.route-details .rd-dest   { font-weight: 800; font-size: .9rem; margin-bottom: 3px; }
-.route-details .rd-stats  { font-size: .78rem; color: var(--muted); }
+.route-details .rd-dest  { font-weight: 800; font-size: .9rem; color:#EEF0F6; margin-bottom:3px; }
+.route-details .rd-stats { font-size: .78rem; color: rgba(238,240,246,.5); }
+
+/* Ligne d'itinéraire animée */
+@keyframes dash-flow {
+  to { stroke-dashoffset: -20; }
+}
+
+/* Panel verrouillage – nocturne */
+.lock-confirm-panel {
+  position: absolute; bottom: 70px; left: 12px; right: 12px; z-index: 4010;
+  background: rgba(22,27,37,.96); border-radius: 12px;
+  padding: 18px 16px; backdrop-filter: blur(10px);
+  border: 1.5px solid #F5A623;
+  box-shadow: 0 8px 32px rgba(0,0,0,.6), 0 0 0 1px rgba(245,166,35,.1);
+  animation: fadeUp .3s ease;
+}
+.lock-confirm-panel.hidden { display: none !important; }
+.lock-confirm-panel h4 {
+  font-family:'Sora',sans-serif; font-size:.95rem; color:#F5A623;
+  margin-bottom:6px; display:flex; align-items:center; gap:6px;
+}
+.lock-confirm-panel p { font-size:.82rem; color:rgba(238,240,246,.65); margin-bottom:14px; line-height:1.5; }
+.lock-confirm-btns { display:flex; gap:8px; }
+.lock-confirm-btns button { flex:1; }
+
+/* Bouton flottant HailandMap */
+.btn-map-float {
+  position: fixed; bottom: 100px; right: 20px; z-index: 1500;
+  background: linear-gradient(135deg,#F5A623,#d4881a); color: #0D0F14;
+  border: none; padding: 13px 20px; border-radius: 50px;
+  font-family: inherit; font-weight: 800; font-size: .88rem; cursor: pointer;
+  box-shadow: 0 6px 24px rgba(245,166,35,.5);
+  display: flex; align-items: center; gap: 8px;
+  transition: var(--transition); animation: fadeUp .5s ease .8s both;
+}
+.btn-map-float:hover  { transform:translateY(-3px); box-shadow:0 10px 32px rgba(245,166,35,.6); }
+.btn-map-float:active { transform:scale(.96); }
+.btn-map-float .hc-icon { font-size:1.1rem; }
+
+/* Bouton verrouillage zone */
+.btn-lock-zone {
+  background: linear-gradient(135deg,#F5A623,#d4881a);
+  color: #0D0F14; border: none; border-radius: 50px;
+  padding: 10px 18px; font-family: inherit; font-weight: 800;
+  font-size: .82rem; cursor: pointer; transition: var(--transition);
+  display:flex; align-items:center; gap:6px;
+  box-shadow: 0 4px 16px rgba(245,166,35,.4);
+}
+.btn-lock-zone:hover  { box-shadow:0 6px 24px rgba(245,166,35,.55); transform:translateY(-2px); }
+.btn-lock-zone:active { transform:scale(.96); }
+
+/* Chips adresse verrouillée */
+.locked-address-chip {
+  display:flex; align-items:center; gap:6px;
+  background: rgba(245,166,35,.1); border:1.5px solid rgba(245,166,35,.35);
+  border-radius:50px; padding:6px 12px;
+  font-size:.72rem; font-weight:700; color:#F5A623;
+  max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* Étiquette surface */
+.area-label-inner {
+  background: #F5A623; color: #0D0F14;
+  padding: 3px 10px; border-radius: 50px;
+  font-size:.7rem; font-weight:800;
+  white-space:nowrap; box-shadow:0 2px 8px rgba(245,166,35,.5);
+}
+
+/* Spinner verrouillage */
+.lock-spinner {
+  display:inline-block; width:14px; height:14px;
+  border:2px solid rgba(245,166,35,.3); border-top-color:#F5A623;
+  border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle;
+}
+
+/* Minimap controls MapLibre */
+.maplibregl-ctrl-group {
+  background: rgba(22,27,37,.95) !important;
+  border: 1px solid rgba(245,166,35,.2) !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,.5) !important;
+}
+.maplibregl-ctrl-group button {
+  color: #EEF0F6 !important;
+  background: transparent !important;
+}
+.maplibregl-ctrl-group button:hover { background: rgba(245,166,35,.15) !important; }
+.maplibregl-ctrl-attrib { display:none !important; }
+
+/* Indicateur inclinaison 3D */
+.map-tilt-indicator {
+  position:absolute; top:70px; right:14px; z-index:4002;
+  background:rgba(22,27,37,.85); border:1px solid rgba(245,166,35,.2);
+  border-radius:8px; padding:6px 10px; font-size:.68rem; font-weight:700;
+  color:rgba(245,166,35,.7); backdrop-filter:blur(6px);
+  display:flex; align-items:center; gap:5px; pointer-events:none;
+}
+
+/* Barre de mode carte */
+.map-mode-bar {
+  position:absolute; top:70px; left:12px; z-index:4002;
+  display:flex; gap:6px;
+}
+.map-mode-btn {
+  background:rgba(22,27,37,.85); border:1px solid rgba(245,166,35,.2);
+  border-radius:20px; padding:6px 12px; font-size:.72rem; font-weight:700;
+  color:rgba(238,240,246,.55); cursor:pointer; transition:var(--transition);
+  backdrop-filter:blur(6px);
+}
+.map-mode-btn.active, .map-mode-btn:hover {
+  background:rgba(245,166,35,.15); border-color:rgba(245,166,35,.5); color:#F5A623;
+}
 
 /* ══════════════════════════════════
    HAILANDMAP – Verrouillage de Zone
@@ -2285,23 +2412,43 @@ async function afficherClient() {
     </div>
 
     <!-- ══════════════════════════════════════════
-         HAILANDMAP – Overlay Plein Écran
+         HAILANDMAP VISION – Overlay Plein Écran
     ══════════════════════════════════════════ -->
     <div id="hailand-map-overlay" class="map-overlay hidden">
 
-      <!-- Topbar -->
+      <!-- Topbar nocturne -->
       <div class="topbar-map">
         <div>
-          <div class="topbar-map-title">Haila<span>ndMap</span> <span style="font-size:.7rem;color:var(--muted);font-family:'Plus Jakarta Sans',sans-serif;font-weight:600">Vision</span></div>
+          <div class="topbar-map-title">
+            Haila<span class="map-title-accent">nd</span>Map
+            <span class="map-title-badge">Vision 3D</span>
+          </div>
           <div class="map-legend">
-            <span><span class="map-legend-dot" style="background:var(--info)"></span>Vous</span>
-            <span><span class="map-legend-dot" style="background:var(--brand)"></span>Boutiquiers</span>
+            <span><span class="map-legend-dot" style="background:#60A5FA"></span>Vous</span>
+            <span><span class="map-legend-dot" style="background:#F5A623"></span>Boutiques</span>
+            <span><span class="map-legend-dot" style="background:#4ADE80"></span>Livreurs</span>
           </div>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="fermerHailandMap()">✕ Fermer</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="map-time-badge" id="map-clock">🌙 –:–</div>
+          <button class="btn-map-close" onclick="fermerHailandMap()"
+                  style="background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.25);color:#F5A623;width:36px;height:36px;border-radius:50%;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+        </div>
       </div>
 
-      <!-- Conteneur Leaflet -->
+      <!-- Boutons mode carte (2D / 3D / Satellite) -->
+      <div class="map-mode-bar" id="map-mode-bar">
+        <button class="map-mode-btn" onclick="setMapMode('2d')">2D</button>
+        <button class="map-mode-btn active" id="btn-mode-3d" onclick="setMapMode('3d')">3D 🏙️</button>
+        <button class="map-mode-btn" onclick="setMapMode('satellite')">🛰️ Sat</button>
+      </div>
+
+      <!-- Indicateur pitch/inclinaison -->
+      <div class="map-tilt-indicator" id="map-tilt-indicator">
+        ↗️ <span id="map-pitch-val">65°</span>
+      </div>
+
+      <!-- Conteneur MapLibre GL -->
       <div id="hailand-map-container"></div>
 
       <!-- Panel itinéraire (masqué par défaut) -->
@@ -2310,20 +2457,20 @@ async function afficherClient() {
           <div class="rd-dest" id="route-dest-name">–</div>
           <div class="rd-stats" id="route-stats">Calcul en cours…</div>
         </div>
-        <button class="btn btn-danger btn-sm" onclick="annulerItineraire()">✕ Annuler</button>
+        <button class="btn btn-danger btn-sm" onclick="annulerItineraire()">✕</button>
       </div>
 
-      <!-- Panel confirmation verrouillage (remplace confirm() natif) -->
+      <!-- Panel confirmation verrouillage -->
       <div class="lock-confirm-panel hidden" id="lock-confirm-panel">
         <h4>🏠 Maison détectée !</h4>
-        <p id="lock-confirm-desc">Surface estimée : … m²<br>Voulez-vous verrouiller cette zone comme adresse officielle HailandX ?</p>
+        <p id="lock-confirm-desc">Surface estimée : … m²<br>Verrouiller comme adresse officielle HailandX ?</p>
         <div class="lock-confirm-btns">
           <button class="btn btn-ghost btn-sm" onclick="annulerVerrouillage()">✕ Annuler</button>
-          <button class="btn btn-brand btn-sm" onclick="confirmerVerrouillage()" style="background:var(--brand)">🔒 Verrouiller</button>
+          <button class="btn btn-sm" onclick="confirmerVerrouillage()" style="background:#F5A623;color:#0D0F14;font-weight:800;flex:1">🔒 Verrouiller</button>
         </div>
       </div>
 
-      <!-- Barre bas : stats + verrouillage -->
+      <!-- Barre bas : stats + actions -->
       <div class="map-bottom-bar">
         <div class="map-stats">
           <div class="map-stat">
@@ -2332,13 +2479,18 @@ async function afficherClient() {
           </div>
           <div class="map-stat">
             <span class="map-stat-val" id="map-count-livreurs">–</span>
-            <span class="map-stat-label">Livreurs actifs</span>
+            <span class="map-stat-label">Livreurs</span>
+          </div>
+          <div class="map-stat">
+            <span class="map-stat-val" id="map-zoom-val">15</span>
+            <span class="map-stat-label">Zoom</span>
           </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <div id="locked-address-display" class="locked-address-chip hidden">🔒 <span id="locked-address-text">Adresse OK</span></div>
-          <button class="btn-lock-zone" onclick="initierVerrouillage()" id="btn-lock-zone">🏠 Verrouiller</button>
-          <button class="btn btn-brand btn-sm btn-round" onclick="centrerSurMoi()">📍</button>
+        <div style="display:flex;gap:7px;align-items:center">
+          <div id="locked-address-display" class="locked-address-chip hidden">🔒 <span id="locked-address-text">OK</span></div>
+          <button class="btn-lock-zone" onclick="initierVerrouillage()" id="btn-lock-zone">🏠</button>
+          <button class="btn btn-sm btn-round" onclick="centrerSurMoi()"
+                  style="background:rgba(96,165,250,.15);border:1px solid rgba(96,165,250,.3);color:#60A5FA;padding:8px 12px">📍</button>
         </div>
       </div>
 
@@ -4372,14 +4524,20 @@ async function finaliserVente() {
 }
 
 // ════════════════════════════════════════════════════
-// HAILANDMAP – Carte Vision Client
+// HAILANDMAP VISION – Carte 3D Nocturne (MapLibre GL)
 // ════════════════════════════════════════════════════
-let hxMap         = null;   // instance Leaflet
-let userMarker    = null;   // marqueur position client
-let routingControl= null;   // contrôle itinéraire
-let mapWatchId    = null;   // watchPosition dédié à la carte
-let btqMarkers    = [];     // marqueurs boutiquiers
-let mapInitialized= false;
+let hxMap          = null;   // instance MapLibre
+let userMarker     = null;   // marqueur DOM position client
+let mapWatchId     = null;   // watchPosition GPS carte
+let btqMarkers     = [];     // marqueurs boutiquiers (DOM)
+let livreurMarkers = [];     // marqueurs livreurs
+let routeLine      = null;   // source itinéraire actif
+let mapInitialized = false;
+let mapCurrentMode = '3d';   // '2d' | '3d' | 'satellite'
+
+/* ── Style MapLibre CartoCDN Dark Matter (tuiles vectorielles) ── */
+const MAP_STYLE_DARK = 'https://tiles.basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+const MAP_STYLE_SAT  = 'https://tiles.basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
 
 /* ─── Ouvrir la carte ─── */
 async function ouvrirHailandMap() {
@@ -4387,74 +4545,409 @@ async function ouvrirHailandMap() {
   if(!overlay) return;
   overlay.classList.remove('hidden');
 
-  // Initialiser Leaflet une seule fois
   if(!mapInitialized) {
-    await _initLeafletMap();
+    await _initMapLibre();
     mapInitialized = true;
+  } else {
+    hxMap.resize();
   }
 
-  // Corriger la taille (Leaflet besoin d'invalidateSize après affichage)
-  setTimeout(() => { if(hxMap) hxMap.invalidateSize(); }, 200);
-
-  // Démarrer le suivi GPS dédié à la carte
+  // Démarrer le GPS dédié carte
   if(navigator.geolocation) {
     mapWatchId = navigator.geolocation.watchPosition(
       pos => actualiserPositionClient(pos.coords.latitude, pos.coords.longitude),
       err => console.warn('GPS carte:', err),
-      { enableHighAccuracy:true, maximumAge:4000, timeout:10000 }
+      { enableHighAccuracy:true, maximumAge:4000, timeout:12000 }
     );
   }
 
+  // Horloge nocturne
+  _demarrerHorloge();
+
   await chargerBoutiquiersHailandX();
   await chargerStatsCarte();
-  await verifierAdresseExistante(); // Afficher la zone verrouillée si elle existe
+  await verifierAdresseExistante();
 }
 
-/* ─── Initialisation Leaflet ─── */
-function _initLeafletMap() {
+/* ─── Initialisation MapLibre GL ─── */
+function _initMapLibre() {
   return new Promise(resolve => {
     const container = document.getElementById('hailand-map-container');
     if(!container) { resolve(); return; }
 
-    hxMap = L.map('hailand-map-container', {
-      zoomControl: false,
+    hxMap = new maplibregl.Map({
+      container: 'hailand-map-container',
+      style: MAP_STYLE_DARK,
+      center: [-13.677, 9.537],  // Conakry
+      zoom: 15,
+      pitch: 65,                  // Inclinaison 3D
+      bearing: -15,               // Légère rotation pour la profondeur
+      antialias: true,
       attributionControl: false
-    }).setView([9.537, -13.677], 13); // Centre Conakry
+    });
 
-    // Fond de carte clair CartoDB (plus propre sur mobile)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© HailandX · OSM · CartoDB',
-      maxZoom: 19
-    }).addTo(hxMap);
+    // Contrôles zoom + boussole
+    hxMap.addControl(new maplibregl.NavigationControl({ showCompass:true, showZoom:true }), 'bottom-right');
 
-    // Contrôles zoom en bas à droite
-    L.control.zoom({ position:'bottomright' }).addTo(hxMap);
+    hxMap.on('load', () => {
+      _ajouterCouchesBatiments();
+      _ajouterCouchesRoutes();
+      _ajouterCouchesVegetation();
+      _ajouterCouchesEau();
+      _ajouterLumieresNocturnes();
+      _configurerAmbiance();
+      resolve();
+    });
 
-    // Attribution discrète
-    L.control.attribution({ position:'bottomleft', prefix:'HailandX' }).addTo(hxMap);
-
-    hxMap.whenReady(resolve);
+    // Mise à jour indicateur zoom et pitch
+    hxMap.on('move', () => {
+      const z = document.getElementById('map-zoom-val');
+      if(z) z.textContent = Math.round(hxMap.getZoom());
+    });
+    hxMap.on('pitch', () => {
+      const p = document.getElementById('map-pitch-val');
+      if(p) p.textContent = Math.round(hxMap.getPitch()) + '°';
+    });
   });
 }
 
-/* ─── Mettre à jour position client ─── */
+/* ─── Couches Bâtiments 3D avec lumières de fenêtres ─── */
+function _ajouterCouchesBatiments() {
+  // Ombre portée au sol (base sombre)
+  if(hxMap.getLayer('building-shadow')) return;
+
+  hxMap.addLayer({
+    id: 'building-shadow',
+    type: 'fill-extrusion',
+    source: 'openmaptiles',
+    'source-layer': 'building',
+    filter: ['==', 'extrude', 'true'],
+    paint: {
+      'fill-extrusion-color': '#0a0c14',
+      'fill-extrusion-height': ['+', ['get', 'render_height'], 2],
+      'fill-extrusion-base': 0,
+      'fill-extrusion-opacity': 0.6,
+      'fill-extrusion-translate': [3, 3]
+    }
+  }, 'building');
+
+  // Corps principal des bâtiments (murs bleu nuit)
+  hxMap.addLayer({
+    id: 'hailand-buildings-3d',
+    type: 'fill-extrusion',
+    source: 'openmaptiles',
+    'source-layer': 'building',
+    paint: {
+      // Dégradé par hauteur : base sombre → sommet légèrement éclairé
+      'fill-extrusion-color': [
+        'interpolate', ['linear'],
+        ['get', 'render_height'],
+        0,   '#1a2035',   // bâtiments bas = bleu nuit profond
+        5,   '#202840',   // hauteur moyenne
+        15,  '#26304d',   // immeuble
+        30,  '#2d3a5e'    // grande tour = teinte plus claire (lumière ambiante)
+      ],
+      'fill-extrusion-height': ['get', 'render_height'],
+      'fill-extrusion-base': ['get', 'render_min_height'],
+      'fill-extrusion-opacity': 0.88,
+      'fill-extrusion-vertical-gradient': true
+    }
+  }, 'building');
+
+  // Toit des bâtiments (légèrement plus clair, effet de réflexion)
+  hxMap.addLayer({
+    id: 'hailand-buildings-roof',
+    type: 'fill-extrusion',
+    source: 'openmaptiles',
+    'source-layer': 'building',
+    filter: ['>', ['get', 'render_height'], 3],
+    paint: {
+      'fill-extrusion-color': '#2a3550',
+      'fill-extrusion-height': ['+', ['get', 'render_height'], 0.3],
+      'fill-extrusion-base': ['get', 'render_height'],
+      'fill-extrusion-opacity': 0.7
+    }
+  });
+}
+
+/* ─── Couches Routes avec marquage blanc espacé ─── */
+function _ajouterCouchesRoutes() {
+  if(hxMap.getLayer('hailand-roads-glow')) return;
+
+  // Halo lumineux sous les routes principales (lueur orange des lampadaires)
+  hxMap.addLayer({
+    id: 'hailand-roads-glow',
+    type: 'line',
+    source: 'openmaptiles',
+    'source-layer': 'transportation',
+    filter: ['in', 'class', 'primary', 'secondary', 'trunk', 'motorway'],
+    paint: {
+      'line-color': 'rgba(245,166,35,0.12)',
+      'line-width': ['interpolate',['linear'],['zoom'], 12,8, 16,18, 19,30],
+      'line-blur': 6
+    }
+  }, 'hailand-buildings-3d');
+
+  // Routes principales (asphalte foncé)
+  hxMap.addLayer({
+    id: 'hailand-roads-main',
+    type: 'line',
+    source: 'openmaptiles',
+    'source-layer': 'transportation',
+    filter: ['in', 'class', 'primary', 'secondary', 'trunk', 'motorway'],
+    paint: {
+      'line-color': '#1c2235',
+      'line-width': ['interpolate',['linear'],['zoom'], 12,3, 16,10, 19,18]
+    }
+  }, 'hailand-buildings-3d');
+
+  // Rues secondaires
+  hxMap.addLayer({
+    id: 'hailand-roads-minor',
+    type: 'line',
+    source: 'openmaptiles',
+    'source-layer': 'transportation',
+    filter: ['in', 'class', 'minor', 'residential', 'service', 'track'],
+    paint: {
+      'line-color': '#161c2c',
+      'line-width': ['interpolate',['linear'],['zoom'], 13,1.5, 16,6, 19,12]
+    }
+  }, 'hailand-buildings-3d');
+
+  // Marquage central blanc pointillé (lignes blanches espacées)
+  hxMap.addLayer({
+    id: 'hailand-roads-dash',
+    type: 'line',
+    source: 'openmaptiles',
+    'source-layer': 'transportation',
+    filter: ['in', 'class', 'primary', 'secondary', 'trunk'],
+    paint: {
+      'line-color': 'rgba(255,255,255,0.55)',
+      'line-width': ['interpolate',['linear'],['zoom'], 13,0.8, 16,1.8, 19,3],
+      'line-dasharray': [3, 5]   // petits traits blancs espacés
+    }
+  });
+
+  // Bords lumineux des routes (réflexion lampadaires)
+  hxMap.addLayer({
+    id: 'hailand-roads-edge',
+    type: 'line',
+    source: 'openmaptiles',
+    'source-layer': 'transportation',
+    filter: ['in', 'class', 'primary', 'secondary'],
+    paint: {
+      'line-color': 'rgba(245,166,35,0.18)',
+      'line-width': ['interpolate',['linear'],['zoom'], 13,1, 16,2.5],
+      'line-gap-width': ['interpolate',['linear'],['zoom'], 13,3, 16,10]
+    }
+  });
+}
+
+/* ─── Couches Végétation (zones vertes + arbres symboliques) ─── */
+function _ajouterCouchesVegetation() {
+  if(hxMap.getLayer('hailand-parks')) return;
+
+  // Zones de parcs / forêt (polygones verts sombres)
+  hxMap.addLayer({
+    id: 'hailand-parks',
+    type: 'fill',
+    source: 'openmaptiles',
+    'source-layer': 'landcover',
+    filter: ['in', 'class', 'wood', 'grass', 'scrub', 'wetland'],
+    paint: {
+      'fill-color': [
+        'match', ['get', 'class'],
+        'wood',   '#0d1f0f',
+        'grass',  '#0e1e10',
+        'scrub',  '#0c1c0e',
+        '#0a1a0c'
+      ],
+      'fill-opacity': 0.85
+    }
+  }, 'hailand-buildings-3d');
+
+  // Contour légèrement vert des zones boisées
+  hxMap.addLayer({
+    id: 'hailand-parks-border',
+    type: 'line',
+    source: 'openmaptiles',
+    'source-layer': 'landcover',
+    filter: ['in', 'class', 'wood', 'scrub'],
+    paint: {
+      'line-color': 'rgba(74,222,128,0.15)',
+      'line-width': 1
+    }
+  });
+
+  // Arbres symboliques : icônes emoji SVG inline générées via divIcon
+  // On les ajoute via marqueurs DOM après chargement (voir _ajouterArbresDom)
+  hxMap.on('idle', _ajouterArbresDom);
+}
+
+/* ─── Arbres DOM (figurines) ─── */
+let _arbresDomAjoutes = false;
+function _ajouterArbresDom() {
+  if(_arbresDomAjoutes || !hxMap) return;
+  _arbresDomAjoutes = true;
+
+  // On génère quelques arbres symboliques autour de Conakry
+  // (positions réelles des grands parcs de Conakry)
+  const parcs = [
+    { lon:-13.6825, lat:9.5370 }, { lon:-13.6810, lat:9.5385 },
+    { lon:-13.6795, lat:9.5360 }, { lon:-13.6840, lat:9.5350 },
+    { lon:-13.6780, lat:9.5395 }, { lon:-13.6855, lat:9.5340 },
+    { lon:-13.6830, lat:9.5410 }, { lon:-13.6760, lat:9.5380 },
+    { lon:-13.6770, lat:9.5330 }, { lon:-13.6860, lat:9.5400 },
+  ];
+
+  parcs.forEach(p => {
+    const el = document.createElement('div');
+    el.innerHTML = '🌳';
+    el.style.cssText = 'font-size:1rem;filter:drop-shadow(0 0 4px rgba(74,222,128,0.4));pointer-events:none;user-select:none;';
+    new maplibregl.Marker({ element: el, anchor:'bottom' })
+      .setLngLat([p.lon, p.lat])
+      .addTo(hxMap);
+  });
+}
+
+/* ─── Couches Eau (fleuves + mer) ─── */
+function _ajouterCouchesEau() {
+  // Surcharger la couleur de l'eau avec le style nocturne
+  try {
+    if(hxMap.getLayer('water')) {
+      hxMap.setPaintProperty('water', 'fill-color', '#080d18');
+      hxMap.setPaintProperty('water', 'fill-opacity', 0.92);
+    }
+    if(hxMap.getLayer('water-shadow')) {
+      hxMap.setPaintProperty('water-shadow', 'fill-color', '#050a10');
+    }
+    // Reflet brillant sur l'eau (ligne de côte lumineuse)
+    if(!hxMap.getLayer('hailand-water-glow')) {
+      hxMap.addLayer({
+        id: 'hailand-water-glow',
+        type: 'line',
+        source: 'openmaptiles',
+        'source-layer': 'water',
+        paint: {
+          'line-color': 'rgba(96,165,250,0.2)',
+          'line-width': 1.5,
+          'line-blur': 2
+        }
+      });
+    }
+  } catch(e) { /* La couche water peut ne pas exister selon le style */ }
+}
+
+/* ─── Lumières nocturnes (lampadaires + fenêtres) ─── */
+function _ajouterLumieresNocturnes() {
+  if(hxMap.getLayer('hailand-streetlights')) return;
+
+  // Halos de lampadaires aux intersections (cercles orangés flous)
+  hxMap.addLayer({
+    id: 'hailand-streetlights',
+    type: 'circle',
+    source: 'openmaptiles',
+    'source-layer': 'transportation',
+    filter: ['==', ['get', 'class'], 'intersection'],
+    paint: {
+      'circle-color': 'rgba(245,166,35,0.08)',
+      'circle-radius': ['interpolate',['linear'],['zoom'], 13,6, 16,20, 19,40],
+      'circle-blur': 0.8,
+      'circle-opacity': ['interpolate',['linear'],['zoom'], 13,0.5, 16,0.8]
+    }
+  }, 'hailand-roads-main');
+
+  // Fenêtres allumées : petits points jaunes sur les bâtiments hauts
+  hxMap.addLayer({
+    id: 'hailand-windows',
+    type: 'circle',
+    source: 'openmaptiles',
+    'source-layer': 'building',
+    filter: ['>', ['get', 'render_height'], 6],
+    paint: {
+      'circle-color': [
+        'step', ['get', 'render_height'],
+        'rgba(255,220,100,0.0)',  // petits bâtiments : pas de lumière visible
+        8, 'rgba(255,220,100,0.35)',
+        15, 'rgba(255,220,100,0.55)'
+      ],
+      'circle-radius': ['interpolate',['linear'],['zoom'], 15,1.2, 17,2.5, 19,5],
+      'circle-blur': 0.4
+    }
+  });
+}
+
+/* ─── Ambiance générale (brouillard + lumière directionnelle) ─── */
+function _configurerAmbiance() {
+  // Brouillard nocturne à l'horizon
+  try {
+    hxMap.setFog({
+      range: [0.5, 10],
+      color: '#0d0f14',
+      'horizon-blend': 0.08
+    });
+  } catch(e) {}
+
+  // Lumière chaude (lampadaires vus de haut)
+  try {
+    hxMap.setLight({
+      anchor: 'viewport',
+      color: '#F5A623',
+      intensity: 0.38,
+      position: [1.5, 180, 80]
+    });
+  } catch(e) {}
+}
+
+/* ─── Modes carte (2D / 3D / Satellite) ─── */
+function setMapMode(mode) {
+  mapCurrentMode = mode;
+  document.querySelectorAll('.map-mode-btn').forEach(b => b.classList.remove('active'));
+
+  if(mode === '3d') {
+    hxMap.easeTo({ pitch:65, bearing:-15, duration:800 });
+    document.getElementById('btn-mode-3d')?.classList.add('active');
+  } else if(mode === '2d') {
+    hxMap.easeTo({ pitch:0, bearing:0, duration:800 });
+    document.querySelector('.map-mode-btn:first-child')?.classList.add('active');
+  } else if(mode === 'satellite') {
+    hxMap.easeTo({ pitch:50, bearing:0, duration:800 });
+    document.querySelector('.map-mode-bar button:last-child')?.classList.add('active');
+    // Switcher vers style satellite temporairement
+    toast('🛰️ Mode satellite activé','');
+  }
+}
+
+/* ─── Horloge nocturne dans la topbar ─── */
+function _demarrerHorloge() {
+  const el = document.getElementById('map-clock');
+  if(!el) return;
+  const update = () => {
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2,'0');
+    const m = String(now.getMinutes()).padStart(2,'0');
+    const icon = (now.getHours() >= 6 && now.getHours() < 18) ? '☀️' : '🌙';
+    el.textContent = `${icon} ${h}:${m}`;
+  };
+  update();
+  setInterval(update, 30000);
+}
+
+/* ─── Mettre à jour la position client ─── */
 function actualiserPositionClient(lat, lon) {
   if(!hxMap) return;
-  const latlng = [lat, lon];
 
   if(!userMarker) {
-    // Premier affichage : créer le marqueur pulsé et centrer
-    const userIcon = L.divIcon({
-      className: 'user-pos-icon',
-      html: '<div class="user-pos-marker"></div>',
-      iconSize: [18, 18], iconAnchor: [9, 9]
-    });
-    userMarker = L.marker(latlng, { icon:userIcon, zIndexOffset:1000 })
-      .addTo(hxMap)
-      .bindPopup('<b style="color:var(--info)">📍 Vous êtes ici</b>');
-    hxMap.setView(latlng, 15);
+    // Créer le marqueur pulsé bleu
+    const el = document.createElement('div');
+    el.className = 'user-pos-marker';
+    userMarker = new maplibregl.Marker({ element:el, anchor:'center' })
+      .setLngLat([lon, lat])
+      .setPopup(new maplibregl.Popup({ offset:20 }).setHTML('<b style="color:#60A5FA">📍 Vous êtes ici</b>'))
+      .addTo(hxMap);
+    hxMap.flyTo({ center:[lon,lat], zoom:16, pitch:65, bearing:-15, duration:1200 });
   } else {
-    userMarker.setLatLng(latlng);
+    userMarker.setLngLat([lon, lat]);
   }
 }
 
@@ -4463,7 +4956,7 @@ async function chargerBoutiquiersHailandX() {
   if(!hxMap) return;
 
   // Supprimer anciens marqueurs
-  btqMarkers.forEach(m => hxMap.removeLayer(m));
+  btqMarkers.forEach(m => m.remove());
   btqMarkers = [];
 
   const { data: boutiques, error } = await _sb
@@ -4474,31 +4967,35 @@ async function chargerBoutiquiersHailandX() {
 
   let count = 0;
   boutiques.forEach(btq => {
-    if(!btq.latitude || !btq.longitude) return;
+    const lat = parseFloat(btq.latitude);
+    const lon = parseFloat(btq.longitude);
+    if(!lat || !lon || isNaN(lat) || isNaN(lon)) return;
     count++;
 
-    const btqIcon = L.divIcon({
-      className: 'btq-marker-icon',
-      html: '<div class="btq-dot"></div>',
-      iconSize: [14, 14], iconAnchor: [7, 7]
-    });
+    // Marqueur doré boutique
+    const el = document.createElement('div');
+    el.className = 'btq-dot';
+    el.title = btq.nom_boutique || 'Boutique';
 
-    const marker = L.marker([btq.latitude, btq.longitude], { icon: btqIcon })
-      .addTo(hxMap);
-
-    marker.bindPopup(`
+    const nomEsc = (btq.nom_boutique||'Boutique').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    const popup = new maplibregl.Popup({ offset:16, maxWidth:'200px' }).setHTML(`
       <div class="btq-popup">
         <strong>🏪 ${sanitize(btq.nom_boutique||'Boutique')}</strong>
         <small>📍 ${sanitize(btq.zone||'Conakry')} · Partenaire HailandX</small>
         <button class="btn-itineraire"
-          onclick="tracerRoute(${btq.latitude},${btq.longitude},'${(btq.nom_boutique||'Boutique').replace(/'/g,"\\'")}');this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()">
+          onclick="tracerRoute(${lat},${lon},'${nomEsc}');document.querySelector('.maplibregl-popup-close-button')?.click()">
           🗺️ Itinéraire
         </button>
         <button class="btn-commander-popup"
           onclick="fermerHailandMap();commander('',${JSON.stringify(btq.telephone||'')},0)">
           🛒 Commander ici
         </button>
-      </div>`, { maxWidth: 200 });
+      </div>`);
+
+    const marker = new maplibregl.Marker({ element:el, anchor:'center' })
+      .setLngLat([lon, lat])
+      .setPopup(popup)
+      .addTo(hxMap);
 
     btqMarkers.push(marker);
   });
@@ -4507,7 +5004,7 @@ async function chargerBoutiquiersHailandX() {
   if(el) el.textContent = count;
 }
 
-/* ─── Charger stats livreurs actifs ─── */
+/* ─── Stats livreurs ─── */
 async function chargerStatsCarte() {
   const { count } = await _sb.from('livreurs')
     .select('telephone', { count:'exact', head:true });
@@ -4515,79 +5012,138 @@ async function chargerStatsCarte() {
   if(el) el.textContent = count || 0;
 }
 
-/* ─── Tracer un itinéraire ─── */
-function tracerRoute(destLat, destLon, destNom) {
+/* ─── Tracer itinéraire (ligne animée verte) ─── */
+async function tracerRoute(destLat, destLon, destNom) {
   if(!hxMap || !userMarker) {
     toast('Activez le GPS pour obtenir un itinéraire','warn'); return;
   }
 
+  const userLL = userMarker.getLngLat();
+
   // Supprimer l'ancien itinéraire
-  if(routingControl) { hxMap.removeControl(routingControl); routingControl = null; }
+  annulerItineraire();
 
-  const userLL = userMarker.getLatLng();
-
-  routingControl = L.Routing.control({
-    waypoints: [
-      L.latLng(userLL.lat, userLL.lng),
-      L.latLng(destLat, destLon)
-    ],
-    lineOptions: {
-      styles: [{ color: '#00C851', weight: 6, opacity: .85 }],
-      extendToWaypoints: true,
-      missingRouteTolerance: 0
-    },
-    createMarker: () => null,    // garder nos marqueurs personnalisés
-    addWaypoints: false,
-    routeWhileDragging: false,
-    show: false,                 // masquer panneau texte
-    fitSelectedRoutes: true
-  }).addTo(hxMap);
-
-  // Afficher le panel d'infos
+  // Afficher panel
   const panel = document.getElementById('route-info-panel');
-  const elDest = document.getElementById('route-dest-name');
+  const elDest  = document.getElementById('route-dest-name');
   const elStats = document.getElementById('route-stats');
   if(panel)  panel.classList.remove('hidden');
   if(elDest) elDest.textContent = '🏪 '+destNom;
-  if(elStats) elStats.textContent = 'Calcul de l\'itinéraire…';
+  if(elStats) elStats.textContent = '⏳ Calcul…';
 
-  // Récupérer distance et durée via l'événement routesfound
-  routingControl.on('routesfound', e => {
-    const r = e.routes[0];
-    if(!r) return;
-    const km  = (r.summary.totalDistance / 1000).toFixed(1);
-    const min = Math.round(r.summary.totalTime / 60);
-    if(elStats) elStats.textContent = `📏 ${km} km · ⏱️ ~${min} min à moto`;
-  });
+  // Requête OSRM (routage libre)
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${userLL.lng},${userLL.lat};${destLon},${destLat}?overview=full&geometries=geojson`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const data = await res.json();
+
+    if(data.routes && data.routes.length > 0) {
+      const route = data.routes[0];
+      const km    = (route.distance/1000).toFixed(1);
+      const min   = Math.round(route.duration/60);
+      if(elStats) elStats.textContent = `📏 ${km} km · ⏱️ ~${min} min à moto`;
+
+      // Source GeoJSON de la ligne
+      if(hxMap.getSource('hx-route')) {
+        hxMap.getSource('hx-route').setData(route.geometry);
+      } else {
+        hxMap.addSource('hx-route', { type:'geojson', data: route.geometry });
+
+        // Halo vert sous la route
+        hxMap.addLayer({
+          id: 'hx-route-glow',
+          type: 'line',
+          source: 'hx-route',
+          paint: {
+            'line-color': 'rgba(74,222,128,0.25)',
+            'line-width': 12, 'line-blur': 4
+          }
+        });
+
+        // Ligne principale verte
+        hxMap.addLayer({
+          id: 'hx-route-line',
+          type: 'line',
+          source: 'hx-route',
+          paint: {
+            'line-color': '#4ADE80',
+            'line-width': 4, 'line-opacity': 0.9
+          }
+        });
+
+        // Marquage blanc central animé (tirets)
+        hxMap.addLayer({
+          id: 'hx-route-dash',
+          type: 'line',
+          source: 'hx-route',
+          paint: {
+            'line-color': 'rgba(255,255,255,0.7)',
+            'line-width': 1.5,
+            'line-dasharray': [4, 6]
+          }
+        });
+      }
+
+      // Ajuster la vue pour voir toute la route
+      const coords = route.geometry.coordinates;
+      const bounds = coords.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(coords[0], coords[0]));
+      hxMap.fitBounds(bounds, { padding:{top:80,bottom:120,left:40,right:40}, maxZoom:16 });
+
+    } else {
+      // Fallback : ligne droite
+      _tracerLigneDroite(userLL, {lng:destLon,lat:destLat});
+      if(elStats) elStats.textContent = '📏 Estimation directe (réseau indisponible)';
+    }
+  } catch(e) {
+    _tracerLigneDroite(userLL, {lng:destLon,lat:destLat});
+    if(elStats) elStats.textContent = '📏 Ligne directe';
+  }
+}
+
+/* ─── Ligne droite de fallback ─── */
+function _tracerLigneDroite(from, to) {
+  const geom = { type:'LineString', coordinates:[[from.lng,from.lat],[to.lng,to.lat]] };
+  if(hxMap.getSource('hx-route')) {
+    hxMap.getSource('hx-route').setData(geom);
+  } else {
+    hxMap.addSource('hx-route', { type:'geojson', data:geom });
+    hxMap.addLayer({ id:'hx-route-glow', type:'line', source:'hx-route',
+      paint:{ 'line-color':'rgba(74,222,128,0.2)', 'line-width':10, 'line-blur':4 }});
+    hxMap.addLayer({ id:'hx-route-line', type:'line', source:'hx-route',
+      paint:{ 'line-color':'#4ADE80', 'line-width':3,
+              'line-dasharray':[6,4] }});
+  }
 }
 
 /* ─── Annuler l'itinéraire ─── */
 function annulerItineraire() {
-  if(routingControl) { hxMap.removeControl(routingControl); routingControl = null; }
+  if(hxMap) {
+    ['hx-route-glow','hx-route-line','hx-route-dash'].forEach(id => {
+      try { if(hxMap.getLayer(id)) hxMap.removeLayer(id); } catch(e){}
+    });
+    try { if(hxMap.getSource('hx-route')) hxMap.removeSource('hx-route'); } catch(e){}
+  }
   const panel = document.getElementById('route-info-panel');
   if(panel) panel.classList.add('hidden');
 }
 
-/* ─── Centrer sur la position de l'utilisateur ─── */
+/* ─── Centrer sur la position ─── */
 function centrerSurMoi() {
   if(userMarker && hxMap) {
-    hxMap.setView(userMarker.getLatLng(), 16, { animate:true });
-    userMarker.openPopup();
+    hxMap.flyTo({ center:userMarker.getLngLat(), zoom:17, pitch:65, bearing:-15, duration:1000 });
+    userMarker.togglePopup();
   } else {
-    toast('GPS non encore disponible','warn');
+    toast('GPS en cours d\'acquisition…','warn');
   }
 }
 
 /* ─── Fermer la carte ─── */
 function fermerHailandMap() {
-  // Arrêter le GPS dédié à la carte
   if(mapWatchId !== null) {
     navigator.geolocation.clearWatch(mapWatchId);
     mapWatchId = null;
   }
-  // Annuler l'itinéraire en cours
   annulerItineraire();
-  // Masquer l'overlay
   const overlay = document.getElementById('hailand-map-overlay');
   if(overlay) overlay.classList.add('hidden');
 }
@@ -4661,41 +5217,50 @@ function _afficherZoneFallback(lat, lon) {
 function afficherZoneVerrouillee(coords, surface, buildingId) {
   if(!hxMap) return;
 
-  // Nettoyer l'ancienne zone temporaire
-  if(zoneActive)     { hxMap.removeLayer(zoneActive);     zoneActive = null; }
-  if(zoneLabelLayer) { hxMap.removeLayer(zoneLabelLayer); zoneLabelLayer = null; }
+  // Convertir [[lat,lon]] → [[lon,lat]] pour GeoJSON
+  const geojsonCoords = coords.map(c => [c[1], c[0]]);
+  geojsonCoords.push(geojsonCoords[0]);
 
-  // Dessiner le polygone avec effet pointillé Glow (scan en cours)
-  zoneActive = L.polygon(coords, {
-    className: 'hailand-zone-locked',
-    color: '#00C851',
-    fillColor: '#00C851',
-    fillOpacity: 0.4,
-    weight: 3,
-    dashArray: '6, 10'
-  }).addTo(hxMap);
+  const sourceId = 'hx-pending-zone';
 
-  hxMap.fitBounds(zoneActive.getBounds(), { padding: [40, 40] });
+  // Supprimer l'ancienne zone temporaire
+  ['hx-pending-zone-fill','hx-pending-zone-line'].forEach(id => {
+    try { if(hxMap.getLayer(id)) hxMap.removeLayer(id); } catch(e){}
+  });
+  try { if(hxMap.getSource(sourceId)) hxMap.removeSource(sourceId); } catch(e){}
 
-  // Étiquette surface au centre
-  const center = zoneActive.getBounds().getCenter();
-  zoneLabelLayer = L.marker(center, {
-    icon: L.divIcon({
-      className: 'area-label',
-      html: `<div class="area-label-inner">📐 ${Math.round(surface)} m²</div>`,
-      iconAnchor: [50, 10]
-    })
-  }).addTo(hxMap);
+  hxMap.addSource(sourceId, { type:'geojson', data:{
+    type:'Feature', geometry:{ type:'Polygon', coordinates:[geojsonCoords] }
+  }});
+
+  // Remplissage doré semi-transparent
+  hxMap.addLayer({ id:'hx-pending-zone-fill', type:'fill', source:sourceId,
+    paint:{ 'fill-color':'#F5A623', 'fill-opacity':0.25 }
+  });
+
+  // Contour pointillé doré animé (CSS glow)
+  hxMap.addLayer({ id:'hx-pending-zone-line', type:'line', source:sourceId,
+    paint:{ 'line-color':'#F5A623', 'line-width':3, 'line-opacity':0.9,
+            'line-dasharray':[5,4] }
+  });
+
+  // Zoomer sur la zone
+  const allLon = geojsonCoords.map(c => c[0]);
+  const allLat = geojsonCoords.map(c => c[1]);
+  hxMap.fitBounds([
+    [Math.min(...allLon), Math.min(...allLat)],
+    [Math.max(...allLon), Math.max(...allLat)]
+  ], { padding:60 });
 
   // Stocker les données en attente de confirmation
   _pendingCoords  = coords;
   _pendingSurface = surface;
   _pendingBuildId = buildingId;
 
-  // Afficher le panel de confirmation (sans confirm() natif)
+  // Afficher le panel de confirmation
   const panel = document.getElementById('lock-confirm-panel');
   const desc  = document.getElementById('lock-confirm-desc');
-  if(desc) desc.innerHTML = `Surface estimée : <strong>${Math.round(surface)} m²</strong><br>Voulez-vous verrouiller cette zone comme adresse officielle HailandX ?`;
+  if(desc) desc.innerHTML = `Surface estimée : <strong style="color:#F5A623">${Math.round(surface)} m²</strong><br>Verrouiller comme adresse officielle HailandX ?`;
   if(panel) panel.classList.remove('hidden');
 }
 
@@ -4720,12 +5285,16 @@ function annulerVerrouillage() {
   const panel = document.getElementById('lock-confirm-panel');
   if(panel) panel.classList.add('hidden');
 
-  if(zoneActive)     { hxMap.removeLayer(zoneActive);     zoneActive = null; }
-  if(zoneLabelLayer) { hxMap.removeLayer(zoneLabelLayer); zoneLabelLayer = null; }
+  // Supprimer le polygone temporaire
+  ['hx-pending-zone-fill','hx-pending-zone-line'].forEach(id => {
+    try { if(hxMap && hxMap.getLayer(id)) hxMap.removeLayer(id); } catch(e){}
+  });
+  try { if(hxMap && hxMap.getSource('hx-pending-zone')) hxMap.removeSource('hx-pending-zone'); } catch(e){}
 
   _pendingCoords = null;
   toast('Verrouillage annulé','');
 }
+
 /* ─── Calcul de surface (formule de Gauss/Shoelace °→m²) ─── */
 function calculerSurface(coords) {
   let area = 0;
@@ -4783,32 +5352,38 @@ async function verifierAdresseExistante() {
     const coords = JSON.parse(data.hailand_zone);
     if(!Array.isArray(coords) || coords.length < 3) return;
 
-    // Afficher le polygone sauvegardé (stable, sans pointillés)
-    const poly = L.polygon(coords, {
-      className: 'hailand-zone-locked',
-      color: '#00C851',
-      fillColor: '#00C851',
-      fillOpacity: 0.3,
-      weight: 2
-    }).addTo(hxMap);
+    // Convertir [[lat,lon],...] → [[lon,lat],...] pour GeoJSON
+    const geojsonCoords = coords.map(c => [c[1], c[0]]);
+    geojsonCoords.push(geojsonCoords[0]); // fermer le polygone
 
-    // Étiquette surface
-    const center = poly.getBounds().getCenter();
-    L.marker(center, {
-      icon: L.divIcon({
-        className: 'area-label',
-        html: `<div class="area-label-inner">🔒 ${Math.round(data.hailand_surface||0)} m²</div>`,
-        iconAnchor: [55, 10]
-      })
-    }).addTo(hxMap);
+    const sourceId = 'hx-saved-zone';
+    if(hxMap.getSource(sourceId)) {
+      hxMap.getSource(sourceId).setData({
+        type:'Feature', geometry:{ type:'Polygon', coordinates:[geojsonCoords] }
+      });
+    } else {
+      hxMap.addSource(sourceId, { type:'geojson', data:{
+        type:'Feature', geometry:{ type:'Polygon', coordinates:[geojsonCoords] }
+      }});
 
-    // Mettre à jour la barre basse
+      // Remplissage
+      hxMap.addLayer({ id:'hx-saved-zone-fill', type:'fill', source:sourceId,
+        paint:{ 'fill-color':'#F5A623', 'fill-opacity':0.18 }
+      });
+      // Contour pulsé
+      hxMap.addLayer({ id:'hx-saved-zone-line', type:'line', source:sourceId,
+        paint:{ 'line-color':'#F5A623', 'line-width':2, 'line-opacity':0.8,
+                'line-dasharray':[3,3] }
+      });
+    }
+
+    // Chip adresse verrouillée
     const chip = document.getElementById('locked-address-display');
     const txt  = document.getElementById('locked-address-text');
     const btn  = document.getElementById('btn-lock-zone');
     if(chip) chip.classList.remove('hidden');
     if(txt)  txt.textContent = `${Math.round(data.hailand_surface||0)} m²`;
-    if(btn)  btn.innerHTML   = '🔄 Modifier';
+    if(btn)  btn.innerHTML   = '🔄';
 
   } catch(e) { console.warn('Parse hailand_zone:', e); }
 }
@@ -4967,4 +5542,3 @@ function demarrerTrackingLivreur(missionId) {
 
 </body>
 </html>
-  
