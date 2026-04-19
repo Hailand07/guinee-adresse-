@@ -30,7 +30,7 @@
 
 <!-- Fonts -->
 
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@700;800&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
 
 <style>
 :root {
@@ -62,6 +62,227 @@
   --shadow-lg: 0 12px 48px rgba(0,0,0,.12);
   --transition: all .25s cubic-bezier(.4,0,.2,1);
 }
+
+/* ══════════════════════════════════════════════════════
+   THÈME 2 : NUIT DORÉE — Élégance sombre & or guinéen
+   Inspiré des couleurs du drapeau 🇬🇳 et du commerce
+   de nuit à Conakry. Sobre, premium, lisible.
+══════════════════════════════════════════════════════ */
+[data-theme="night-gold"] {
+  /* Brand → Or guinéen */
+  --brand:      #F5A623;
+  --brand-dark: #d4881a;
+  --brand-glow: rgba(245,166,35,.18);
+  --accent:     #E84855;
+  --accent2:    #FFD60A;
+  --info:       #60A5FA;
+
+  /* Surfaces sombres */
+  --bg:       #0D0F14;
+  --surface:  #161B25;
+  --surface2: #1E2535;
+  --overlay:  rgba(0,0,0,.72);
+
+  /* Texte sur fond sombre */
+  --text:     #EEF0F6;
+  --muted:    #7A8499;
+  --text-inv: #0D0F14;
+
+  /* UI */
+  --border:    #2A3348;
+  --shadow:    0 4px 24px rgba(0,0,0,.35);
+  --shadow-lg: 0 12px 48px rgba(0,0,0,.55);
+}
+
+/* ── Polices du thème Nuit Dorée */
+[data-theme="night-gold"] body {
+  font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
+}
+[data-theme="night-gold"] .font-display,
+[data-theme="night-gold"] h1,
+[data-theme="night-gold"] h2,
+[data-theme="night-gold"] .hero-title,
+[data-theme="night-gold"] .topbar-map-title,
+[data-theme="night-gold"] .dash-panel h3,
+[data-theme="night-gold"] .stat-card .value,
+[data-theme="night-gold"] .stat-box-val {
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: -.01em;
+}
+
+/* ── Hero Nuit Dorée */
+[data-theme="night-gold"] .hero-wrap {
+  background: linear-gradient(160deg,#05070d 0%,#0d0f14 55%,#1a0e04 100%);
+}
+[data-theme="night-gold"] .hero-title span   { color: var(--brand); }
+[data-theme="night-gold"] .hero-glow  { background: radial-gradient(circle,rgba(245,166,35,.14) 0%,transparent 70%); }
+[data-theme="night-gold"] .hero-glow2 { background: radial-gradient(circle,rgba(232,72,85,.10) 0%,transparent 70%); }
+[data-theme="night-gold"] .hero-card  { background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.08); }
+[data-theme="night-gold"] .hero-card:hover { border-color: var(--brand); }
+[data-theme="night-gold"] .hc-btn     { background: var(--brand); color: var(--text-inv); }
+
+/* ── Boutons */
+[data-theme="night-gold"] .btn-brand { background: var(--brand); color: var(--text-inv); }
+[data-theme="night-gold"] .btn-brand:hover { background: var(--brand-dark); box-shadow: 0 8px 24px rgba(245,166,35,.3); }
+[data-theme="night-gold"] .btn-ghost { background: var(--surface2); border-color: var(--border); color: var(--muted); }
+[data-theme="night-gold"] .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+[data-theme="night-gold"] .btn-dark  { background: var(--surface2); color: var(--text); }
+
+/* ── Formulaires */
+[data-theme="night-gold"] .form-page { background: linear-gradient(160deg,#0d0f14,#161b25); }
+[data-theme="night-gold"] .form-card { background: var(--surface); box-shadow: 0 0 0 1px var(--border), var(--shadow-lg); }
+[data-theme="night-gold"] .form-group input,
+[data-theme="night-gold"] .form-group select { background: var(--surface2); border-color: var(--border); color: var(--text); }
+[data-theme="night-gold"] .form-group input:focus,
+[data-theme="night-gold"] .form-group select:focus { border-color: var(--brand); background: var(--surface); }
+[data-theme="night-gold"] .hx-dialog input { background: var(--surface2); border-color: var(--border); color: var(--text); }
+
+/* ── Sidenav */
+[data-theme="night-gold"] #sidenav { background: #0a0c10; }
+[data-theme="night-gold"] .sidenav-top { background: linear-gradient(135deg,#0f1420,#0a0c10); border-bottom-color: rgba(245,166,35,.12); }
+[data-theme="night-gold"] .sidenav-avatar { background: var(--brand); color: var(--text-inv); }
+[data-theme="night-gold"] .sidenav-role   { color: var(--brand); }
+[data-theme="night-gold"] .sidenav-item:hover { border-left-color: var(--brand); }
+
+/* ── Produits / Cartes */
+[data-theme="night-gold"] .product-card { background: var(--surface); border-color: var(--border); }
+[data-theme="night-gold"] .product-card:hover { border-color: var(--brand); box-shadow: 0 8px 32px rgba(245,166,35,.15); }
+[data-theme="night-gold"] .pc-img { background: linear-gradient(135deg,#1e2535,#161b25); }
+[data-theme="night-gold"] .pc-price { color: var(--brand); }
+[data-theme="night-gold"] .pc-cta  { background: var(--brand); color: var(--text-inv); }
+[data-theme="night-gold"] .pc-badge-local { background: var(--brand); color: var(--text-inv); }
+
+/* ── Stat cards / Panels */
+[data-theme="night-gold"] .stat-card  { background: var(--surface); border-color: var(--border); box-shadow: var(--shadow); }
+[data-theme="night-gold"] .stat-card.profit  { background: rgba(245,166,35,.06); border-color: rgba(245,166,35,.2); }
+[data-theme="night-gold"] .stat-card.warning { background: rgba(232,72,85,.06); border-color: rgba(232,72,85,.2); }
+[data-theme="night-gold"] .stat-card.info    { background: rgba(96,165,250,.06); border-color: rgba(96,165,250,.2); }
+[data-theme="night-gold"] .stat-card.success { background: rgba(245,166,35,.06); border-color: rgba(245,166,35,.2); }
+[data-theme="night-gold"] .stat-box   { background: var(--surface2); border-color: var(--border); }
+[data-theme="night-gold"] .dash-panel { background: var(--surface); border-color: var(--border); }
+
+/* ── Bouton action principal */
+[data-theme="night-gold"] .btn-main { background: var(--brand); color: var(--text-inv); box-shadow: 0 4px 20px rgba(245,166,35,.3); }
+[data-theme="night-gold"] .btn-main:hover { background: var(--brand-dark); box-shadow: 0 8px 32px rgba(245,166,35,.4); }
+[data-theme="night-gold"] .btn-sec  { background: var(--surface2); border-color: var(--border); color: var(--text); }
+[data-theme="night-gold"] .btn-sec:hover { border-color: var(--brand); color: var(--brand); }
+
+/* ── Headers des espaces */
+[data-theme="night-gold"] .header-v2 { background: linear-gradient(135deg,#0a0c10,#0f1420); }
+[data-theme="night-gold"] .emoji-avatar { background: rgba(245,166,35,.12); border-color: var(--brand); }
+
+/* ── Items inventaire / ventes */
+[data-theme="night-gold"] .inv-item { border-bottom-color: var(--border); }
+[data-theme="night-gold"] .item-gros { background: var(--surface); box-shadow: var(--shadow); }
+[data-theme="night-gold"] .vente-row { background: var(--surface2); border-left-color: var(--brand); }
+[data-theme="night-gold"] .pay-row   { background: var(--surface2); border-left-color: var(--brand); }
+[data-theme="night-gold"] .order-chip { background: var(--surface2); border-color: var(--border); border-left-color: var(--info); }
+[data-theme="night-gold"] .credit-row { background: var(--surface2); border-left-color: var(--accent); }
+[data-theme="night-gold"] .mission-card { background: var(--surface); border-color: var(--border); }
+[data-theme="night-gold"] .mission-card:hover { border-color: var(--brand); }
+[data-theme="night-gold"] .mission-active { background: linear-gradient(135deg,rgba(245,166,35,.06),rgba(245,166,35,.03)); border-color: var(--brand); }
+[data-theme="night-gold"] .mission-price { background: rgba(245,166,35,.1); border-color: rgba(245,166,35,.3); color: var(--brand); }
+
+/* ── Modals vente */
+[data-theme="night-gold"] .modal-vente { background: var(--bg); }
+[data-theme="night-gold"] .modal-vente-header { background: #0a0c10; }
+[data-theme="night-gold"] .btn-produit-select { background: var(--surface); border-color: var(--border); }
+[data-theme="night-gold"] .btn-produit-select:hover { border-color: var(--brand); }
+[data-theme="night-gold"] .btn-produit-select:active { background: rgba(245,166,35,.08); border-color: var(--brand); }
+[data-theme="night-gold"] .checkout-bar { background: var(--surface); border-top-color: var(--border); }
+[data-theme="night-gold"] .btn-valider-vente { background: var(--brand); color: var(--text-inv); }
+[data-theme="night-gold"] .panier-chip { background: rgba(245,166,35,.12); border-color: var(--brand); color: var(--brand); }
+
+/* ── Livreur */
+[data-theme="night-gold"] .gps-status-bar { background: var(--surface); border-color: var(--border); }
+[data-theme="night-gold"] .status-dot { background: var(--brand); }
+[data-theme="night-gold"] .zone-chip { background: rgba(245,166,35,.1); border-color: var(--brand); color: var(--brand); }
+
+/* ── HailandMap */
+[data-theme="night-gold"] .map-overlay { background: var(--bg); }
+[data-theme="night-gold"] .topbar-map  { background: rgba(13,15,20,.96); border-bottom-color: var(--border); }
+[data-theme="night-gold"] .topbar-map-title span { color: var(--brand); }
+[data-theme="night-gold"] .map-bottom-bar { background: rgba(13,15,20,.97); border-top-color: var(--border); }
+[data-theme="night-gold"] .route-info-panel { background: var(--surface); border-color: var(--brand); }
+[data-theme="night-gold"] .btn-lock-zone { background: linear-gradient(135deg,var(--brand),var(--brand-dark)); color: var(--text-inv); box-shadow: 0 4px 16px rgba(245,166,35,.4); }
+[data-theme="night-gold"] .locked-address-chip { background: rgba(245,166,35,.1); border-color: var(--brand); color: var(--brand); }
+[data-theme="night-gold"] .lock-confirm-panel { background: var(--surface); border-color: var(--brand); }
+[data-theme="night-gold"] .btq-dot { background: var(--brand); box-shadow: 0 0 0 3px rgba(245,166,35,.2),0 3px 8px rgba(245,166,35,.3); }
+[data-theme="night-gold"] .user-pos-marker { background: var(--info); }
+[data-theme="night-gold"] .area-label-inner { background: var(--brand); color: var(--text-inv); }
+@keyframes pulse-blue-gold { /* remplace pulse-blue en thème gold */
+  0%,100%{ box-shadow:0 0 0 4px rgba(96,165,250,.25),0 4px 12px rgba(96,165,250,.4); }
+  50%    { box-shadow:0 0 0 10px rgba(96,165,250,.08),0 4px 12px rgba(96,165,250,.4); }
+}
+[data-theme="night-gold"] .user-pos-marker { animation: pulse-blue-gold 2s infinite; }
+
+/* ── Importateur */
+[data-theme="night-gold"] .cargaison-card { background: var(--surface); border-color: var(--border); }
+[data-theme="night-gold"] .grossiste-network-card { background: var(--surface); border-color: var(--border); }
+[data-theme="night-gold"] .penury-alert.critical { background: rgba(232,72,85,.1); }
+[data-theme="night-gold"] .penury-alert.warning  { background: rgba(245,166,35,.1); }
+[data-theme="night-gold"] .ai-insight { background: rgba(96,165,250,.08); border-left-color: var(--info); color: var(--text); }
+[data-theme="night-gold"] .btn-import { background: var(--surface); color: var(--text); border-color: var(--border); box-shadow: var(--shadow); }
+[data-theme="night-gold"] .btn-import:hover { border-color: var(--brand); box-shadow: 0 8px 24px rgba(245,166,35,.2); }
+
+/* ── Toasts & Dialog */
+[data-theme="night-gold"] .hx-toast   { background: var(--surface); color: var(--text); box-shadow: var(--shadow-lg); }
+[data-theme="night-gold"] .hx-toast.success { background: var(--brand); color: var(--text-inv); }
+[data-theme="night-gold"] .hx-toast.error   { background: #E84855; color: #fff; }
+[data-theme="night-gold"] .hx-toast.warn    { background: #D97706; color: #fff; }
+[data-theme="night-gold"] .hx-dialog { background: var(--surface); }
+
+/* ── QR Page */
+[data-theme="night-gold"] .qr-page { background: var(--surface); }
+[data-theme="night-gold"] #qrcode-container { background: #fff; border-color: var(--border); }
+
+/* ── Recherche */
+[data-theme="night-gold"] .search-wrap input { background: var(--surface); border-color: var(--border); color: var(--text); }
+[data-theme="night-gold"] .search-wrap input:focus { border-color: var(--brand); }
+[data-theme="night-gold"] .search-box input { background: var(--surface); border-color: var(--border); color: var(--text); }
+
+/* ── Menu trigger */
+[data-theme="night-gold"] #menu-trigger { background: var(--surface); color: var(--text); }
+
+/* ── Offline banner */
+[data-theme="night-gold"] #offline-banner { background: #D97706; color: #fff; }
+
+/* ── Loading */
+[data-theme="night-gold"] #loading-screen { background: #0a0c10; }
+
+/* ══════════════════════════════════
+   SÉLECTEUR DE THÈME dans le menu
+══════════════════════════════════ */
+.theme-switcher {
+  margin: 8px 16px 4px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.theme-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 8px; border-radius: 8px; border: none;
+  cursor: pointer; transition: var(--transition);
+  font-family: inherit; font-size: .7rem; font-weight: 700;
+  background: transparent; color: rgba(255,255,255,.5);
+  line-height: 1.3;
+}
+.theme-btn:hover { background: rgba(255,255,255,.08); color: rgba(255,255,255,.85); }
+.theme-btn.active {
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.18);
+}
+.theme-btn .tb-icon { font-size: 1.3rem; }
+.theme-btn .tb-dot {
+  width: 28px; height: 6px; border-radius: 3px; margin-top: 4px;
+}
+.theme-btn[data-t="emerald"] .tb-dot { background: linear-gradient(90deg,#00C851,#00a040); }
+.theme-btn[data-t="night-gold"] .tb-dot { background: linear-gradient(90deg,#F5A623,#E84855); }
 
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
@@ -1561,6 +1782,7 @@ async function verifierProfils(phone) {
 // 9. INIT
 // ════════════════════════════════════════════════════
 window.addEventListener('load', async () => {
+  initTheme();          // ← Appliquer le thème sauvegardé immédiatement
   initNetworkWatcher();
   updateOfflineBadge();
   syncOfflineQueue();
@@ -1628,10 +1850,26 @@ function updateMenu() {
 
   if(!body) return;
 
-  let html = '';
+  // ── Sélecteur de thème (toujours visible) ──
+  const currentTheme = localStorage.getItem('hx_theme') || 'emerald';
+  let html = `
+    <div class="sidenav-section-label">Apparence</div>
+    <div class="theme-switcher">
+      <button class="theme-btn ${currentTheme==='emerald'?'active':''}" data-t="emerald" onclick="basculerTheme('emerald')">
+        <span class="tb-icon">🌿</span>
+        <span>Émeraude</span>
+        <div class="tb-dot"></div>
+      </button>
+      <button class="theme-btn ${currentTheme==='night-gold'?'active':''}" data-t="night-gold" onclick="basculerTheme('night-gold')">
+        <span class="tb-icon">🌙</span>
+        <span>Nuit Dorée</span>
+        <div class="tb-dot"></div>
+      </button>
+    </div>
+  `;
 
   if(!phone) {
-    html = `
+    html += `
       <div class="sidenav-section-label">Navigation</div>
       <div class="sidenav-item" onclick="afficherAccueil();closeNav()"><span class="sidenav-item-icon">🏠</span> Accueil</div>
     `;
@@ -1672,6 +1910,39 @@ function updateMenu() {
   }
 
   body.innerHTML = html;
+}
+
+// ════════════════════════════════════════════════════
+// SYSTÈME DE THÈMES
+// ════════════════════════════════════════════════════
+function basculerTheme(theme) {
+  const root = document.documentElement;
+
+  // Appliquer / retirer l'attribut data-theme
+  if(theme === 'emerald') {
+    root.removeAttribute('data-theme');
+  } else {
+    root.setAttribute('data-theme', theme);
+  }
+
+  // Persister le choix
+  localStorage.setItem('hx_theme', theme);
+
+  // Mettre à jour les boutons du menu sans refermer le nav
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.t === theme);
+  });
+
+  // Toast de confirmation discret
+  const labels = { emerald:'🌿 Thème Émeraude', 'night-gold':'🌙 Thème Nuit Dorée' };
+  toast(labels[theme] || 'Thème appliqué', 'success');
+}
+
+function initTheme() {
+  const saved = localStorage.getItem('hx_theme') || 'emerald';
+  if(saved !== 'emerald') {
+    document.documentElement.setAttribute('data-theme', saved);
+  }
 }
 
 function changerRole(role) {
@@ -4455,7 +4726,6 @@ function annulerVerrouillage() {
   _pendingCoords = null;
   toast('Verrouillage annulé','');
 }
-
 /* ─── Calcul de surface (formule de Gauss/Shoelace °→m²) ─── */
 function calculerSurface(coords) {
   let area = 0;
@@ -4697,3 +4967,4 @@ function demarrerTrackingLivreur(missionId) {
 
 </body>
 </html>
+  
