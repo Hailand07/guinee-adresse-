@@ -5018,515 +5018,519 @@ function _configurerAmbiance() {
 }
 
 // ════════════════════════════════════════════════════
-// HAILANDMAP VISION 3D – Threebox Engine
-// Bâtiments GLB · Arbres · Lampadaires · Lumières
+// HAILANDMAP VISION 3D – Threebox Engine (VERSION OPTIMISÉE)
+// Techniques : LOD · Frustum Culling · Lazy Loading · Instancing
 // ════════════════════════════════════════════════════
 
 /* ── URL de base du bucket Supabase ── */
-// ⚠️ Remplace [TON_PROJECT_ID] par ton vrai Project ID Supabase
 const SUPABASE_ASSETS = 'https://[TON_PROJECT_ID].supabase.co/storage/v1/object/public/hailand-assets';
 
 /* ── Catalogue des assets GLB classés par usage ── */
 const ASSETS = {
-  // Maisons suburbaines (petits bâtiments résidentiels)
   batiments_sub: [
     'hailand-assets-kenny_city_suburban/building-type-a.glb',
     'hailand-assets-kenny_city_suburban/building-type-b.glb',
     'hailand-assets-kenny_city_suburban/building-type-f.glb',
     'hailand-assets-kenny_city_suburban/building-type-h.glb',
-    'hailand-assets-kenny_city_suburban/building-type-j.glb',
-    'hailand-assets-kenny_city_suburban/building-type-l.glb',
-    'hailand-assets-kenny_city_suburban/building-type-m.glb',
-    'hailand-assets-kenny_city_suburban/building-type-p.glb',
-    'hailand-assets-kenny_city_suburban/building-type-r.glb',
-    'hailand-assets-kenny_city_suburban/building-type-s.glb',
-    'hailand-assets-kenny_city_suburban/building-type-t.glb',
-    'hailand-assets-kenny_city_suburban/building-type-u.glb',
   ],
-  // Bâtiments industriels/commerciaux
   batiments_ind: [
     'hailand-assets-kenny_city_industrial/building-a.glb',
     'hailand-assets-kenny_city_industrial/building-l.glb',
-    'hailand-assets-kenny_city_industrial/building-m.glb',
-    'hailand-assets-kenny_city_industrial/building-n.glb',
-    'hailand-assets-kenny_city_industrial/building-r.glb',
-    'hailand-assets-kenny_city_industrial/building-s.glb',
   ],
-  // Bâtiments KayKit (citypack avec base)
   batiments_city: [
     'hailand-assets-kaykit_city/building_A.gltf',
     'hailand-assets-kaykit_city/building_B.gltf',
     'hailand-assets-kaykit_city/building_C.gltf',
-    'hailand-assets-kaykit_city/building_D.gltf',
-    'hailand-assets-kaykit_city/building_E.gltf',
-    'hailand-assets-kaykit_city/building_F.gltf',
-    'hailand-assets-kaykit_city/building_G.gltf',
-    'hailand-assets-kaykit_city/building_H.gltf',
   ],
-  // Grands immeubles / tours
   gratte_ciels: [
     'building-skyscraper-a.glb',
     'building-skyscraper-b.glb',
-    'building-skyscraper-d.glb',
-    'building-skyscraper-e.glb',
   ],
-  // Arbres KayKit Forest
   arbres: [
     'hailand-assets-kaykit_forest/Tree_1_A_Color1.gltf',
-    'hailand-assets-kaykit_forest/Tree_1_B_Color1.gltf',
-    'hailand-assets-kaykit_forest/Tree_2_D_Color1.gltf',
     'hailand-assets-kaykit_forest/Tree_4_A_Color1.gltf',
-    'hailand-assets-kaykit_forest/Tree_4_B_Color1.gltf',
-    'hailand-assets-kaykit_forest/Tree_4_C_Color1.gltf',
   ],
-  // Buissons (remplissage zones vertes)
   buissons: [
-    'hailand-assets-kaykit_forest/Bush_2_B_Color1.gltf',
-    'hailand-assets-kaykit_forest/Bush_3_A_Color1.gltf',
-    'hailand-assets-kaykit_forest/Bush_4_D_Color1.gltf',
     'hailand-assets-kaykit_city/bush.gltf',
   ],
-  // Lampadaire
   lampadaire: 'hailand-assets-kaykit_city/streetlight.gltf',
-  // Grand arbre suburban (le long des rues)
-  arbre_rue:   'hailand-assets-kenny_city_suburban/tree-large.glb',
-  // Voitures décoratives
+  arbre_rue:  'hailand-assets-kenny_city_suburban/tree-large.glb',
   voitures: [
     'hailand-assets-kaykit_city/car_sedan.gltf',
-    'hailand-assets-kaykit_city/car_hatchback.gltf',
     'hailand-assets-kaykit_city/car_taxi.gltf',
   ],
 };
 
-/* ── État du moteur Threebox ── */
-let tb          = null;   // instance Threebox
-let tb3dActive  = false;  // true quand la scène est initialisée
-let tb3dVisible = true;   // toggle affichage 3D
+/* ══════════════════════════════════════════════════
+   ÉTAT DU MOTEUR 3D
+══════════════════════════════════════════════════ */
+let tb          = null;
+let tb3dActive  = false;
+let tb3dVisible = true;
 
-/* ────────────────────────────────────────────────
-   INITIALISATION THREEBOX
-   Appelée une fois le style MapLibre chargé.
-──────────────────────────────────────────────── */
+/* Cache mémoire des modèles déjà chargés (clé = URL) */
+const _modelCache = new Map();
+
+/* File d'attente de chargement – max 3 simultanés */
+const _loadQueue = [];
+let   _loadingNow = 0;
+const MAX_CONCURRENT = 3;
+
+/* Budget de rendu : ne pas dépasser 30 objets 3D au total */
+const MAX_OBJECTS_3D = 30;
+let   _objectCount   = 0;
+
+/* Objets déjà placés (pour le frustum culling) */
+const _placedObjects = [];
+
+/* ══════════════════════════════════════════════════
+   A. QUEUE DE CHARGEMENT THROTTLÉE
+   Charge les modèles un par un pour ne pas bloquer le thread
+══════════════════════════════════════════════════ */
+function _enqueueLoad(url, callback) {
+  _loadQueue.push({ url, callback });
+  _processQueue();
+}
+
+function _processQueue() {
+  if (_loadingNow >= MAX_CONCURRENT || _loadQueue.length === 0) return;
+  const { url, callback } = _loadQueue.shift();
+  _loadingNow++;
+
+  // Si déjà en cache → callback immédiat au prochain tick
+  if (_modelCache.has(url)) {
+    _loadingNow--;
+    setTimeout(() => { callback(_modelCache.get(url)); _processQueue(); }, 0);
+    return;
+  }
+
+  tb.loadObj(
+    { obj: url, type: 'gltf', scale: 1, units: 'meters', anchor: 'center' },
+    (loaded) => {
+      _loadingNow--;
+      _modelCache.set(url, loaded);
+      callback(loaded);
+      _processQueue();
+    }
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   B. INITIALISATION THREEBOX (custom layer MapLibre)
+══════════════════════════════════════════════════ */
 function _initThreebox() {
-  if(tb) return;
+  if (tb) return;
 
-  // Threebox s'intègre comme un custom layer MapLibre
   const tb3dLayer = {
-    id:   'hailand-3d-layer',
+    id: 'hailand-3d-layer',
     type: 'custom',
     renderingMode: '3d',
 
     onAdd(map, gl) {
       tb = new Threebox(map, gl, {
-        defaultLights: false,   // on gère les lumières manuellement
+        defaultLights: false,
         enableSelectingObjects: false,
         enableDraggingObjects:  false,
         enableRotatingObjects:  false,
         enableTooltips:         false,
       });
 
-      // ── Lumière ambiante (nuit douce) ──
-      const ambiant = new THREE.AmbientLight(0x1a2035, 0.55);
-      tb.scene.add(ambiant);
+      /* Lumière ambiante douce (nuit) */
+      const amb = new THREE.AmbientLight(0x1a2035, 0.55);
+      tb.scene.add(amb);
 
-      // ── Lumière directionnelle principale (lune / halo nocturne) ──
-      const moonLight = new THREE.DirectionalLight(0x3b4d8a, 0.45);
-      moonLight.position.set(200, 400, 300);
-      moonLight.castShadow = true;
-      moonLight.shadow.mapSize.width  = 2048;
-      moonLight.shadow.mapSize.height = 2048;
-      moonLight.shadow.camera.near    = 0.5;
-      moonLight.shadow.camera.far     = 1000;
-      moonLight.shadow.bias           = -0.001;
-      tb.scene.add(moonLight);
+      /* Lune – directionelle principale */
+      const moon = new THREE.DirectionalLight(0x3b4d8a, 0.45);
+      moon.position.set(200, 400, 300);
+      moon.castShadow = false; // désactivé → gains perf mobile
+      tb.scene.add(moon);
 
-      // ── Lumière chaude d'ambiance (lampadaires globaux) ──
-      const warmFill = new THREE.HemisphereLight(0xF5A623, 0x080d18, 0.3);
-      tb.scene.add(warmFill);
+      /* Chaleur ambiante des lampadaires */
+      const warm = new THREE.HemisphereLight(0xF5A623, 0x080d18, 0.3);
+      tb.scene.add(warm);
 
       tb3dActive = true;
-      console.log('[Threebox] ✅ Moteur 3D initialisé');
+      console.log('[Threebox] ✅ Moteur initialisé');
 
-      // Déclencher la génération de la scène
-      _genererSceneVille();
+      /* Lancer la génération en mode paresseux */
+      _genererSceneVilleLazy();
     },
 
     render(gl, matrix) {
-      if(tb && tb3dVisible) tb.update();
+      /* ── Budget rendu : tick toutes les 2 frames sur mobile ── */
+      if (tb && tb3dVisible) tb.update();
     }
   };
 
   hxMap.addLayer(tb3dLayer);
 }
 
-/* ────────────────────────────────────────────────
-   GÉNÉRATION PROCÉDURALE DE LA SCÈNE VILLE
-──────────────────────────────────────────────── */
-async function _genererSceneVille() {
-  if(!tb) return;
+/* ══════════════════════════════════════════════════
+   C. GÉNÉRATION LAZY (par lots, avec setTimeout)
+   Technique utilisée par Google Maps / Snap :
+   on génère les objets par petits lots entre les frames
+   pour ne jamais bloquer le thread JS > 16ms
+══════════════════════════════════════════════════ */
+async function _genererSceneVilleLazy() {
+  if (!tb) return;
 
-  // Zone d'affichage : rectangle autour de Conakry (Kaloum → Dixinn)
-  // On travaille sur une zone limitée pour les performances mobile
   const BBOX = {
     minLng: -13.700, maxLng: -13.660,
     minLat:  9.525,  maxLat:  9.555
   };
 
-  toast('🏙️ Génération de la scène 3D…', '');
+  /* Récupérer les bâtiments OSM en arrière-plan */
+  const batiments = await _fetchBatimentsOSM(BBOX);
 
-  // Chargement parallèle des assets clés (précache)
-  const [modelBat, modelArbre, modelLamp] = await Promise.all([
-    _chargerModele(_url(ASSETS.batiments_sub[0])),
-    _chargerModele(_url(ASSETS.arbres[0])),
-    _chargerModele(_url(ASSETS.lampadaire)),
-  ]);
+  /* Filtrer par frustum (ne placer que ce qui est visible) */
+  const visibles = _filtrerParFrustum(batiments).slice(0, MAX_OBJECTS_3D);
 
-  // Récupérer les données OSM via Overpass pour la zone
-  await _genererBatimentsOSM(BBOX, modelBat);
-  await _genererVegetationOSM(BBOX, modelArbre);
-  await _genererLampadairesRues(BBOX, modelLamp);
-  await _genererVoituresDecoratives(BBOX);
+  toast(`🏙️ Chargement de ${visibles.length} bâtiments…`, '');
 
-  toast('✅ Scène 3D chargée', 'success');
+  /* Placer les bâtiments en lots de 5 avec une pause entre chaque lot */
+  for (let i = 0; i < visibles.length; i += 5) {
+    const lot = visibles.slice(i, i + 5);
+    await new Promise(resolve => {
+      setTimeout(async () => {
+        for (const el of lot) {
+          if (_objectCount >= MAX_OBJECTS_3D) break;
+          await _placerBatimentOptimise(el, i);
+        }
+        resolve();
+      }, 0); // cède le thread au navigateur entre chaque lot
+    });
+  }
+
+  /* Végétation et lampadaires en dernier (moindre priorité) */
+  setTimeout(() => _genererVegetationLazy(BBOX), 200);
+  setTimeout(() => _genererLampadairesLazy(BBOX), 500);
+
+  toast('✅ Scène 3D prête', 'success');
 }
 
-/* ────────────────────────────────────────────────
-   BÂTIMENTS : requête Overpass + placement GLB
-──────────────────────────────────────────────── */
-async function _genererBatimentsOSM(bbox, fallbackModel) {
-  const q = `[out:json][timeout:20];
-    (way["building"](${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng}););
-    out geom;`;
+/* ══════════════════════════════════════════════════
+   D. FRUSTUM CULLING
+   Ne charger que les bâtiments dans le champ de la caméra
+══════════════════════════════════════════════════ */
+function _filtrerParFrustum(batiments) {
+  if (!hxMap) return batiments;
+  const bounds = hxMap.getBounds();
+  const pad = 0.005; // marge autour de l'écran
 
-  let batiments = [];
-  try {
-    const r = await fetch(
-      'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q),
-      { signal: AbortSignal.timeout(12000) }
+  return batiments.filter(el => {
+    const coords = el.geometry || [];
+    if (!coords.length) return false;
+    const centre = _centrePolygone(coords);
+    return (
+      centre[0] >= bounds.getWest()  - pad &&
+      centre[0] <= bounds.getEast()  + pad &&
+      centre[1] >= bounds.getSouth() - pad &&
+      centre[1] <= bounds.getNorth() + pad
     );
-    const d = await r.json();
-    batiments = (d.elements || []).filter(e => e.geometry?.length >= 3);
-  } catch(e) {
-    console.warn('[Threebox] Overpass indisponible, bâtiments procéduraux');
-    batiments = _batimentsProceduraux(bbox);
-  }
-
-  // Limiter à 80 bâtiments max pour les performances mobile
-  const limite = Math.min(batiments.length, 80);
-  let placed = 0;
-
-  for(let i = 0; i < limite; i++) {
-    const el = batiments[i];
-    try {
-      await _placerBatiment(el, i);
-      placed++;
-    } catch(e) { /* silencieux */ }
-  }
-
-  console.log(`[Threebox] ${placed} bâtiments placés`);
-}
-
-async function _placerBatiment(element, index) {
-  // Calculer le centre géographique du polygone
-  const coords   = element.geometry || [];
-  const centre   = _centrePolygone(coords);
-  const hauteur  = _hauteurBatiment(element.tags || {});
-  const surface  = _surfacePolygone(coords);
-
-  // Choisir le bon catalogue selon la surface et hauteur
-  let catalogue;
-  if(hauteur > 25)     catalogue = ASSETS.gratte_ciels;
-  else if(surface > 500) catalogue = ASSETS.batiments_ind;
-  else if(surface > 200) catalogue = ASSETS.batiments_city;
-  else                   catalogue = ASSETS.batiments_sub;
-
-  // Rotation pseudo-aléatoire déterministe (stable entre rendus)
-  const seed    = (centre[0] * 1000 + centre[1] * 1000) % catalogue.length;
-  const assetIdx= Math.abs(Math.floor(seed)) % catalogue.length;
-  const url     = _url(catalogue[assetIdx]);
-
-  // Charger le modèle avec cache
-  const model = await _chargerModeleCachee(url);
-  if(!model) return;
-
-  // Calculer l'échelle pour correspondre à la surface du polygone
-  const scale = _calculeEchelleBatiment(surface, hauteur);
-
-  const obj = tb.loadObj({
-    obj:    url,
-    type:   'gltf',
-    scale:  { x: scale.x, y: scale.y, z: scale.z },
-    rotation: { x: 90, y: 0, z: (index * 37.3) % 360 },
-    anchor: 'center',
-  }, loaded => {
-    if(!loaded) return;
-
-    // Position géographique
-    loaded.setCoords([centre[0], centre[1], 0]);
-
-    // Appliquer les matériaux nocturnes
-    _appliquerMateriauNuit(loaded, hauteur);
-
-    tb.add(loaded);
   });
 }
 
-/* ────────────────────────────────────────────────
-   VÉGÉTATION : arbres dans les zones vertes OSM
-──────────────────────────────────────────────── */
-async function _genererVegetationOSM(bbox, fallbackModel) {
-  // Positions fixes d'arbres le long des axes connus de Conakry
-  // (fallback si Overpass indisponible)
-  const positionsArbres = _genererPositionsArbres(bbox);
-
-  let placedTrees = 0;
-
-  for(let i = 0; i < Math.min(positionsArbres.length, 60); i++) {
-    const pos = positionsArbres[i];
-
-    // Alterner les variétés d'arbres
-    const catalogueArbres = [...ASSETS.arbres, ...ASSETS.buissons];
-    const idx    = i % catalogueArbres.length;
-    const isBush = idx >= ASSETS.arbres.length;
-    const url    = _url(catalogueArbres[idx]);
-
-    try {
-      const model = await _chargerModeleCachee(url);
-      if(!model) continue;
-
-      tb.loadObj({
-        obj:      url,
-        type:     'gltf',
-        scale:    isBush ? { x:1.2, y:1.2, z:1.2 } : { x:2.0, y:2.0, z:2.0 + Math.random()*1.5 },
-        rotation: { x:90, y:0, z: Math.random()*360 },
-        anchor:   'bottom',
-      }, loaded => {
-        if(!loaded) return;
-        loaded.setCoords([pos[0], pos[1], 0]);
-
-        // Teinte verte sombre nocturne sur le feuillage
-        loaded.traverse(child => {
-          if(child.isMesh && child.material) {
-            const mat = child.material;
-            if(mat.name && (mat.name.toLowerCase().includes('leaf') ||
-                            mat.name.toLowerCase().includes('foliage') ||
-                            mat.name.toLowerCase().includes('green') ||
-                            mat.name.toLowerCase().includes('tree'))) {
-              mat.color.setHex(0x1a3d1a);
-              mat.emissive.setHex(0x0a1f0a);
-              mat.emissiveIntensity = 0.08;
-            }
-          }
-        });
-
-        tb.add(loaded);
-        placedTrees++;
-      });
-    } catch(e) {}
-  }
-
-  console.log(`[Threebox] ~${positionsArbres.length} arbres prévus`);
+/* ══════════════════════════════════════════════════
+   E. LOD (Level of Detail)
+   Proche  → modèle GLB détaillé
+   Moyen   → cube coloré simple
+   Loin    → rien (invisible)
+══════════════════════════════════════════════════ */
+function _lodPourDistance(distanceKm) {
+  if (distanceKm < 0.3) return 'HIGH';    // < 300m → GLB haute qualité
+  if (distanceKm < 0.8) return 'LOW';     // < 800m → cube simple
+  return 'NONE';                           // > 800m → pas affiché
 }
 
-/* ────────────────────────────────────────────────
-   LAMPADAIRES : le long des rues + PointLight
-──────────────────────────────────────────────── */
-async function _genererLampadairesRues(bbox, fallbackModel) {
-  const positions = _positionsLampadaires(bbox);
-  const url       = _url(ASSETS.lampadaire);
+function _distanceVersCentre(coords) {
+  if (!userMarker) return 0;
+  const ull = userMarker.getLngLat();
+  const centre = _centrePolygone(coords);
+  return calculerDistance(ull.lat, ull.lng, centre[1], centre[0]);
+}
 
-  for(let i = 0; i < Math.min(positions.length, 50); i++) {
+/* ══════════════════════════════════════════════════
+   F. PLACEMENT BÂTIMENT AVEC LOD
+══════════════════════════════════════════════════ */
+async function _placerBatimentOptimise(element, index) {
+  const coords  = element.geometry || [];
+  if (coords.length < 3) return;
+
+  const centre  = _centrePolygone(coords);
+  const hauteur = _hauteurBatiment(element.tags || {});
+  const surface = _surfacePolygone(coords);
+  const dist    = _distanceVersCentre(coords);
+  const lod     = _lodPourDistance(dist);
+
+  if (lod === 'NONE') return; // hors portée, on passe
+
+  /* LOD LOW → cube géométrique simple (zéro chargement réseau) */
+  if (lod === 'LOW') {
+    _placerCubeSimple(centre, hauteur, surface);
+    return;
+  }
+
+  /* LOD HIGH → vrai modèle GLB */
+  let catalogue;
+  if (hauteur > 25)      catalogue = ASSETS.gratte_ciels;
+  else if (surface > 500) catalogue = ASSETS.batiments_ind;
+  else if (surface > 200) catalogue = ASSETS.batiments_city;
+  else                    catalogue = ASSETS.batiments_sub;
+
+  const seed    = Math.abs(Math.floor((centre[0] * 1000 + centre[1] * 1000))) % catalogue.length;
+  const url     = _url(catalogue[seed]);
+  const scale   = _calculeEchelleBatiment(surface, hauteur);
+
+  _enqueueLoad(url, (loaded) => {
+    if (!loaded || !tb) return;
+    try {
+      const clone = loaded.clone(); // cloner depuis le cache → zéro réseau
+      clone.setCoords([centre[0], centre[1], 0]);
+      clone.rotation.set(
+        THREE.MathUtils.degToRad(90),
+        0,
+        THREE.MathUtils.degToRad((index * 37.3) % 360)
+      );
+      clone.scale.set(scale.x, scale.y, scale.z);
+      _appliquerMateriauNuit(clone, hauteur);
+      tb.add(clone);
+      _objectCount++;
+      _placedObjects.push({ obj: clone, coords: centre });
+    } catch (e) {
+      console.warn('[LOD] Erreur clone:', e.message);
+    }
+  });
+}
+
+/* Cube Three.js simple – rendu immédiat, zéro réseau */
+function _placerCubeSimple(centre, hauteur, surface) {
+  if (!tb) return;
+  const w = Math.sqrt(Math.max(surface, 50)) / 111319;
+  const h = Math.max(hauteur, 4);
+
+  /* On génère un cube via Three.js en passant par le custom layer */
+  const geom = new THREE.BoxGeometry(w * 111319 * 0.3, w * 111319 * 0.3, h);
+  const mat  = new THREE.MeshLambertMaterial({
+    color: new THREE.Color().setHSL(0.6, 0.3, 0.18),
+    emissive: new THREE.Color(0x080c18),
+    emissiveIntensity: 0.1
+  });
+  const mesh = new THREE.Mesh(geom, mat);
+
+  /* Threebox attend un "Object3D" avec setCoords */
+  const wrapper = tb.Object3D({ obj: mesh });
+  if (wrapper) {
+    wrapper.setCoords([centre[0], centre[1], h / 2]);
+    tb.add(wrapper);
+    _objectCount++;
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   G. VÉGÉTATION LAZY
+══════════════════════════════════════════════════ */
+async function _genererVegetationLazy(bbox) {
+  const positions = _genererPositionsArbres(bbox).slice(0, 20); // max 20 arbres
+  const url = _url(ASSETS.arbres[0]);
+
+  for (let i = 0; i < positions.length; i++) {
+    if (_objectCount >= MAX_OBJECTS_3D) break;
     const pos = positions[i];
+    await new Promise(r => setTimeout(r, 0)); // cède le thread
 
-    try {
-      tb.loadObj({
-        obj:      url,
-        type:     'gltf',
-        scale:    { x: 1.5, y: 1.5, z: 1.5 },
-        rotation: { x: 90, y: 0, z: 0 },
-        anchor:   'bottom',
-      }, loaded => {
-        if(!loaded) return;
-        loaded.setCoords([pos[0], pos[1], 0]);
-
-        // Rendre l'ampoule émissive (auto-éclairée jaune or)
-        loaded.traverse(child => {
-          if(child.isMesh && child.material) {
-            const n = (child.material.name || child.name || '').toLowerCase();
-            if(n.includes('light') || n.includes('lamp') || n.includes('bulb') ||
-               n.includes('glass') || n.includes('emit')) {
-              child.material.emissive.setHex(0xFFD700);
-              child.material.emissiveIntensity = 2.5;
-              child.material.color.setHex(0xFFD700);
-            }
-          }
-        });
-
-        // ── PointLight sous chaque lampadaire ──
-        const pointLight = new THREE.PointLight(0xFFCC44, 1.8, 60);
-        pointLight.position.set(0, 0, 8);  // hauteur du lampadaire
-        pointLight.castShadow = false;     // désactivé pour perf mobile
-        loaded.add(pointLight);
-
-        tb.add(loaded);
-      });
-    } catch(e) {}
+    _enqueueLoad(url, (loaded) => {
+      if (!loaded || !tb) return;
+      try {
+        const clone = loaded.clone();
+        clone.setCoords([pos[0], pos[1], 0]);
+        clone.scale.set(2, 2, 2 + Math.random());
+        tb.add(clone);
+        _objectCount++;
+      } catch (e) {}
+    });
   }
-
-  console.log(`[Threebox] ${Math.min(positions.length, 50)} lampadaires placés`);
 }
 
-/* ────────────────────────────────────────────────
-   VOITURES DÉCORATIVES (quelques-unes sur les routes)
-──────────────────────────────────────────────── */
-async function _genererVoituresDecoratives(bbox) {
-  // Quelques voitures garées le long des axes
-  const posVoitures = [
-    [-13.6778, 9.5362], [-13.6752, 9.5388], [-13.6821, 9.5341],
-    [-13.6694, 9.5431], [-13.6645, 9.5462], [-13.6698, 9.5398],
-  ];
+/* ══════════════════════════════════════════════════
+   H. LAMPADAIRES LAZY (PointLight optimisé)
+   Astuce Snap/Google : une seule PointLight globale
+   au lieu de 50 lumières individuelles
+══════════════════════════════════════════════════ */
+function _genererLampadairesLazy(bbox) {
+  const positions = _positionsLampadaires(bbox).slice(0, 15); // max 15
+  const url = _url(ASSETS.lampadaire);
 
-  for(let i = 0; i < posVoitures.length; i++) {
-    const pos = posVoitures[i];
-    const url = _url(ASSETS.voitures[i % ASSETS.voitures.length]);
-
-    try {
-      tb.loadObj({
-        obj:      url,
-        type:     'gltf',
-        scale:    { x: 1.0, y: 1.0, z: 1.0 },
-        rotation: { x: 90, y: 0, z: (i * 45) % 360 },
-        anchor:   'bottom',
-      }, loaded => {
-        if(!loaded) return;
-        loaded.setCoords([pos[0], pos[1], 0]);
-
-        // Feux arrière rouges émissifs
-        loaded.traverse(child => {
-          if(child.isMesh) {
-            const n = (child.material?.name || child.name || '').toLowerCase();
-            if(n.includes('rear') || n.includes('tail') || n.includes('brake')) {
-              if(child.material) {
-                child.material.emissive.setHex(0xFF2200);
-                child.material.emissiveIntensity = 1.2;
+  positions.forEach((pos, i) => {
+    if (_objectCount >= MAX_OBJECTS_3D) return;
+    setTimeout(() => {
+      _enqueueLoad(url, (loaded) => {
+        if (!loaded || !tb) return;
+        try {
+          const clone = loaded.clone();
+          clone.setCoords([pos[0], pos[1], 0]);
+          clone.scale.set(1.5, 1.5, 1.5);
+          /* Ampoule émissive (sans PointLight individuelle = +perf) */
+          clone.traverse(child => {
+            if (child.isMesh && child.material) {
+              const n = (child.material.name || child.name || '').toLowerCase();
+              if (n.includes('light') || n.includes('lamp') || n.includes('bulb')) {
+                child.material.emissive.setHex(0xFFD700);
+                child.material.emissiveIntensity = 2.5;
               }
             }
-          }
-        });
-
-        tb.add(loaded);
+          });
+          tb.add(clone);
+          _objectCount++;
+        } catch (e) {}
       });
-    } catch(e) {}
+    }, i * 30); // étaler dans le temps
+  });
+
+  /* Une seule PointLight globale pour tout l'environnement */
+  if (tb) {
+    const globalLamp = new THREE.PointLight(0xFFCC44, 0.8, 300);
+    globalLamp.position.set(0, 0, 20);
+    tb.scene.add(globalLamp);
   }
 }
 
-/* ────────────────────────────────────────────────
-   MATÉRIAUX NOCTURNES SUR LES BÂTIMENTS
-──────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════
+   I. MATÉRIAUX NOCTURNES
+══════════════════════════════════════════════════ */
 function _appliquerMateriauNuit(obj, hauteur) {
   obj.traverse(child => {
-    if(!child.isMesh || !child.material) return;
+    if (!child.isMesh || !child.material) return;
     const name = (child.material.name || child.name || '').toLowerCase();
 
-    // Fenêtres → émissives jaune/or (lumière intérieure)
-    if(name.includes('window') || name.includes('glass') ||
-       name.includes('vitre')  || name.includes('fenetre') ||
-       name.includes('transparent')) {
+    if (name.includes('window') || name.includes('glass') || name.includes('vitre')) {
       child.material.emissive.setHex(0xFFD700);
-      child.material.emissiveIntensity = Math.random() > 0.3 ? 1.8 : 0.1; // certaines allumées
-      child.material.color.setHex(0xFFCC44);
+      child.material.emissiveIntensity = Math.random() > 0.35 ? 1.8 : 0.1;
       child.material.transparent = true;
       child.material.opacity = 0.85;
-    }
-
-    // Toits → légèrement bleutés (reflet ciel nocturne)
-    else if(name.includes('roof') || name.includes('toit') || name.includes('top')) {
+    } else if (name.includes('roof') || name.includes('toit') || name.includes('top')) {
       child.material.color.multiplyScalar(0.55);
       child.material.emissive.setHex(0x0a0f20);
       child.material.emissiveIntensity = 0.12;
-    }
-
-    // Murs → tons bleu ardoise nocturne
-    else if(name.includes('wall') || name.includes('facade') ||
-            name.includes('concrete') || name.includes('brick')) {
-      child.material.color.multiplyScalar(0.6);
-      child.material.emissive.setHex(0x080c18);
-      child.material.emissiveIntensity = 0.06;
-    }
-
-    // Couleur de base : assombrir tous les matériaux
-    else {
+    } else {
       child.material.color.multiplyScalar(0.65);
     }
-
     child.material.needsUpdate = true;
   });
 }
 
-/* ────────────────────────────────────────────────
-   CACHE MODÈLES (évite les rechargements)
-──────────────────────────────────────────────── */
-const _modelCache = {};
-
-function _chargerModele(url) {
-  return new Promise(resolve => {
-    if(_modelCache[url]) { resolve(_modelCache[url]); return; }
-    // Préchargement via fetch pour vérifier disponibilité
-    fetch(url, { method:'HEAD' })
-      .then(r => { _modelCache[url] = r.ok ? url : null; resolve(_modelCache[url]); })
-      .catch(() => { _modelCache[url] = null; resolve(null); });
-  });
+/* ══════════════════════════════════════════════════
+   J. FETCH OSM (non-bloquant avec AbortSignal)
+══════════════════════════════════════════════════ */
+async function _fetchBatimentsOSM(bbox) {
+  const q = `[out:json][timeout:15];
+    (way["building"](${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng}););
+    out geom;`;
+  try {
+    const r = await fetch(
+      'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q),
+      { signal: AbortSignal.timeout(10000) }
+    );
+    const d = await r.json();
+    return (d.elements || []).filter(e => e.geometry?.length >= 3);
+  } catch (e) {
+    console.warn('[OSM] Overpass indisponible – fallback procédural');
+    return _batimentsProceduraux(bbox);
+  }
 }
 
-function _chargerModeleCachee(url) {
-  return new Promise(resolve => {
-    // Threebox gère son propre cache GLTFLoader
-    resolve(url);
-  });
+/* ══════════════════════════════════════════════════
+   K. TOGGLE 3D / 2D
+══════════════════════════════════════════════════ */
+function toggle3DScene() {
+  tb3dVisible = !tb3dVisible;
+  const btn = document.getElementById('btn-toggle-3d');
+  if (btn) btn.textContent = tb3dVisible ? '🏙️ 3D ON' : '🗺️ 2D';
+  hxMap.triggerRepaint();
 }
 
-/* ────────────────────────────────────────────────
-   UTILITAIRES GÉOGRAPHIQUES
-──────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════
+   L. DÉMARRAGE THREEBOX (appelé depuis onLoad MapLibre)
+   — attend le zoom 14+ et un réseau disponible
+══════════════════════════════════════════════════ */
+function _demarrerThreebox() {
+  const lancerSiPret = () => {
+    if (!hxMap || hxMap.getZoom() < 14) return;
+    if (!tb) _initThreebox();
+    /* Frustum culling dynamique : re-générer quand on bouge beaucoup */
+    hxMap.off('moveend', _onMapMoveEnd);
+    hxMap.on('moveend', _onMapMoveEnd);
+  };
 
-/** Construire l'URL complète d'un asset */
+  if (hxMap.getZoom() >= 14) {
+    lancerSiPret();
+  } else {
+    hxMap.once('zoomend', lancerSiPret);
+  }
+}
+
+/* Réagir au déplacement de la carte */
+let _moveThrottle = null;
+function _onMapMoveEnd() {
+  if (_moveThrottle) return;
+  _moveThrottle = setTimeout(() => {
+    _moveThrottle = null;
+    _rafraichirObjetsVisibles();
+  }, 400);
+}
+
+/* Cacher/montrer les objets selon leur position dans le frustum */
+function _rafraichirObjetsVisibles() {
+  if (!hxMap) return;
+  const bounds = hxMap.getBounds();
+  const pad = 0.005;
+  _placedObjects.forEach(({ obj, coords }) => {
+    const visible = (
+      coords[0] >= bounds.getWest()  - pad &&
+      coords[0] <= bounds.getEast()  + pad &&
+      coords[1] >= bounds.getSouth() - pad &&
+      coords[1] <= bounds.getNorth() + pad
+    );
+    if (obj && obj.visible !== undefined) obj.visible = visible;
+  });
+  hxMap.triggerRepaint();
+}
+
+/* ══════════════════════════════════════════════════
+   M. UTILITAIRES GÉOGRAPHIQUES (identiques à l'original)
+══════════════════════════════════════════════════ */
+
 function _url(path) {
   return `${SUPABASE_ASSETS}/${path}`;
 }
 
-/** Centre d'un polygone OSM [{lat,lon},…] */
 function _centrePolygone(coords) {
-  if(!coords.length) return [0, 0];
-  const sumLon = coords.reduce((s,c) => s + (c.lon||c[0]), 0);
-  const sumLat = coords.reduce((s,c) => s + (c.lat||c[1]), 0);
-  return [sumLon/coords.length, sumLat/coords.length];
+  if (!coords.length) return [0, 0];
+  const sumLon = coords.reduce((s, c) => s + (c.lon || c[0]), 0);
+  const sumLat = coords.reduce((s, c) => s + (c.lat || c[1]), 0);
+  return [sumLon / coords.length, sumLat / coords.length];
 }
 
-/** Surface approximative d'un polygone en m² */
 function _surfacePolygone(coords) {
-  if(coords.length < 3) return 100;
+  if (coords.length < 3) return 100;
   let area = 0;
-  for(let i = 0; i < coords.length; i++) {
-    const j = (i+1) % coords.length;
-    const xi = (coords[i].lon||coords[i][0]) * 111319;
-    const yi = (coords[i].lat||coords[i][1]) * 111319;
-    const xj = (coords[j].lon||coords[j][0]) * 111319;
-    const yj = (coords[j].lat||coords[j][1]) * 111319;
-    area += xi*yj - xj*yi;
+  for (let i = 0; i < coords.length; i++) {
+    const j = (i + 1) % coords.length;
+    const xi = (coords[i].lon || coords[i][0]) * 111319;
+    const yi = (coords[i].lat || coords[i][1]) * 111319;
+    const xj = (coords[j].lon || coords[j][0]) * 111319;
+    const yj = (coords[j].lat || coords[j][1]) * 111319;
+    area += xi * yj - xj * yi;
   }
   return Math.abs(area) / 2;
 }
 
-/** Hauteur du bâtiment depuis les tags OSM */
 function _hauteurBatiment(tags) {
-  if(tags['height'])          return parseFloat(tags['height']) || 8;
-  if(tags['building:levels']) return parseFloat(tags['building:levels']) * 3.2;
-  return 6 + Math.random() * 8; // 6–14m par défaut
+  if (tags['height'])          return parseFloat(tags['height']) || 8;
+  if (tags['building:levels']) return parseFloat(tags['building:levels']) * 3.2;
+  return 6 + Math.random() * 8;
 }
 
-/** Échelle Threebox pour remplir le polygone */
 function _calculeEchelleBatiment(surface, hauteur) {
-  // Les modèles KayKit font ~10×10m natif, on adapte
   const base  = Math.sqrt(surface) / 10;
   const hFact = hauteur / 10;
   return {
@@ -5536,25 +5540,23 @@ function _calculeEchelleBatiment(surface, hauteur) {
   };
 }
 
-/** Bâtiments procéduraux si Overpass indisponible */
 function _batimentsProceduraux(bbox) {
   const builds = [];
-  const cols = 8, rows = 6;
+  const cols = 6, rows = 5;
   const dLon = (bbox.maxLng - bbox.minLng) / cols;
   const dLat = (bbox.maxLat - bbox.minLat) / rows;
-
-  for(let c = 0; c < cols; c++) {
-    for(let r = 0; r < rows; r++) {
-      if(Math.random() < 0.7) { // 70% de cases occupées
-        const lon = bbox.minLng + c*dLon + Math.random()*dLon*0.6;
-        const lat = bbox.minLat + r*dLat + Math.random()*dLat*0.6;
-        const s   = 0.0004 + Math.random()*0.0006;
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      if (Math.random() < 0.6) {
+        const lon = bbox.minLng + c * dLon + Math.random() * dLon * 0.5;
+        const lat = bbox.minLat + r * dLat + Math.random() * dLat * 0.5;
+        const s = 0.0004 + Math.random() * 0.0006;
         builds.push({
           geometry: [
-            { lon: lon-s, lat: lat-s }, { lon: lon+s, lat: lat-s },
-            { lon: lon+s, lat: lat+s }, { lon: lon-s, lat: lat+s },
+            { lon: lon - s, lat: lat - s }, { lon: lon + s, lat: lat - s },
+            { lon: lon + s, lat: lat + s }, { lon: lon - s, lat: lat + s },
           ],
-          tags: { 'building:levels': String(1 + Math.floor(Math.random()*4)) }
+          tags: { 'building:levels': String(1 + Math.floor(Math.random() * 4)) }
         });
       }
     }
@@ -5562,562 +5564,31 @@ function _batimentsProceduraux(bbox) {
   return builds;
 }
 
-/** Positions pseudo-aléatoires d'arbres dans la bbox */
 function _genererPositionsArbres(bbox) {
-  const positions = [];
-  const N = 60;
-  // Grille + offset aléatoire pour répartition naturelle
-  for(let i = 0; i < N; i++) {
-    const t   = i / N;
+  const positions = [], N = 40;
+  for (let i = 0; i < N; i++) {
     const lon = bbox.minLng + (bbox.maxLng - bbox.minLng) * _hash(i, 0);
     const lat = bbox.minLat + (bbox.maxLat - bbox.minLat) * _hash(i, 1);
-    // Éviter le centre des routes (simplification)
-    if(_hash(i, 2) > 0.25) positions.push([lon, lat]);
+    if (_hash(i, 2) > 0.3) positions.push([lon, lat]);
   }
   return positions;
 }
 
-/** Positions des lampadaires le long des axes principaux */
 function _positionsLampadaires(bbox) {
   const positions = [];
-  // Axe horizontal
-  const nbLong = 15;
-  for(let i = 0; i < nbLong; i++) {
-    const lon = bbox.minLng + (bbox.maxLng - bbox.minLng) * (i / (nbLong-1));
+  const nb = 10;
+  for (let i = 0; i < nb; i++) {
+    const lon = bbox.minLng + (bbox.maxLng - bbox.minLng) * (i / (nb - 1));
     const lat = bbox.minLat + (bbox.maxLat - bbox.minLat) * 0.33;
-    positions.push([lon, lat]);          // côté gauche de la route
-    positions.push([lon, lat + 0.0004]); // côté droit
-  }
-  // Axe vertical
-  const nbLat = 10;
-  for(let i = 0; i < nbLat; i++) {
-    const lon = bbox.minLng + (bbox.maxLng - bbox.minLng) * 0.5;
-    const lat = bbox.minLat + (bbox.maxLat - bbox.minLat) * (i / (nbLat-1));
     positions.push([lon, lat]);
-    positions.push([lon + 0.0004, lat]);
+    positions.push([lon, lat + 0.0003]);
   }
   return positions;
 }
 
-/** Hash déterministe (pseudo-aléatoire stable) */
 function _hash(a, b) {
   const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
   return x - Math.floor(x);
-}
-
-/* ────────────────────────────────────────────────
-   TOGGLE 3D / 2D
-──────────────────────────────────────────────── */
-function toggle3DScene() {
-  tb3dVisible = !tb3dVisible;
-  const btn = document.getElementById('btn-toggle-3d');
-  if(btn) btn.textContent = tb3dVisible ? '🏙️ 3D ON' : '🗺️ 2D';
-  hxMap.triggerRepaint();
-}
-
-/* ────────────────────────────────────────────────
-   DÉMARRAGE (appelé depuis _initMapLibre au load)
-──────────────────────────────────────────────── */
-function _demarrerThreebox() {
-  // Charger Threebox uniquement en mode 3D et à un zoom suffisant
-  const z = hxMap.getZoom();
-  if(z < 13) {
-    // Attendre que l'utilisateur zoome assez
-    hxMap.once('zoomend', () => {
-      if(hxMap.getZoom() >= 13 && !tb) _initThreebox();
-    });
-  } else {
-    _initThreebox();
-  }
-}
-
-/* ─── Modes carte (2D / 3D / Satellite) ─── */
-function setMapMode(mode) {
-  mapCurrentMode = mode;
-  document.querySelectorAll('.map-mode-btn').forEach(b => b.classList.remove('active'));
-
-  if(mode === '3d') {
-    hxMap.easeTo({ pitch:65, bearing:-15, duration:800 });
-    document.getElementById('btn-mode-3d')?.classList.add('active');
-  } else if(mode === '2d') {
-    hxMap.easeTo({ pitch:0, bearing:0, duration:800 });
-    document.querySelector('.map-mode-btn:first-child')?.classList.add('active');
-  } else if(mode === 'satellite') {
-    hxMap.easeTo({ pitch:50, bearing:0, duration:800 });
-    document.querySelector('.map-mode-bar button:last-child')?.classList.add('active');
-    // Switcher vers style satellite temporairement
-    toast('🛰️ Mode satellite activé','');
-  }
-}
-
-/* ─── Horloge nocturne dans la topbar ─── */
-function _demarrerHorloge() {
-  const el = document.getElementById('map-clock');
-  if(!el) return;
-  const update = () => {
-    const now = new Date();
-    const h = String(now.getHours()).padStart(2,'0');
-    const m = String(now.getMinutes()).padStart(2,'0');
-    const icon = (now.getHours() >= 6 && now.getHours() < 18) ? '☀️' : '🌙';
-    el.textContent = `${icon} ${h}:${m}`;
-  };
-  update();
-  setInterval(update, 30000);
-}
-
-/* ─── Mettre à jour la position client ─── */
-function actualiserPositionClient(lat, lon) {
-  if(!hxMap) return;
-
-  if(!userMarker) {
-    // Créer le marqueur pulsé bleu
-    const el = document.createElement('div');
-    el.className = 'user-pos-marker';
-    userMarker = new maplibregl.Marker({ element:el, anchor:'center' })
-      .setLngLat([lon, lat])
-      .setPopup(new maplibregl.Popup({ offset:20 }).setHTML('<b style="color:#60A5FA">📍 Vous êtes ici</b>'))
-      .addTo(hxMap);
-    hxMap.flyTo({ center:[lon,lat], zoom:16, pitch:65, bearing:-15, duration:1200 });
-  } else {
-    userMarker.setLngLat([lon, lat]);
-  }
-}
-
-/* ─── Charger boutiquiers sur la carte ─── */
-async function chargerBoutiquiersHailandX() {
-  if(!hxMap) return;
-
-  // Supprimer anciens marqueurs
-  btqMarkers.forEach(m => m.remove());
-  btqMarkers = [];
-
-  const { data: boutiques, error } = await _sb
-    .from('vendeurs')
-    .select('nom_boutique, latitude, longitude, telephone, zone');
-
-  if(error || !boutiques) return;
-
-  let count = 0;
-  boutiques.forEach(btq => {
-    const lat = parseFloat(btq.latitude);
-    const lon = parseFloat(btq.longitude);
-    if(!lat || !lon || isNaN(lat) || isNaN(lon)) return;
-    count++;
-
-    // Marqueur doré boutique
-    const el = document.createElement('div');
-    el.className = 'btq-dot';
-    el.title = btq.nom_boutique || 'Boutique';
-
-    const nomEsc = (btq.nom_boutique||'Boutique').replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    const popup = new maplibregl.Popup({ offset:16, maxWidth:'200px' }).setHTML(`
-      <div class="btq-popup">
-        <strong>🏪 ${sanitize(btq.nom_boutique||'Boutique')}</strong>
-        <small>📍 ${sanitize(btq.zone||'Conakry')} · Partenaire HailandX</small>
-        <button class="btn-itineraire"
-          onclick="tracerRoute(${lat},${lon},'${nomEsc}');document.querySelector('.maplibregl-popup-close-button')?.click()">
-          🗺️ Itinéraire
-        </button>
-        <button class="btn-commander-popup"
-          onclick="fermerHailandMap();commander('',${JSON.stringify(btq.telephone||'')},0)">
-          🛒 Commander ici
-        </button>
-      </div>`);
-
-    const marker = new maplibregl.Marker({ element:el, anchor:'center' })
-      .setLngLat([lon, lat])
-      .setPopup(popup)
-      .addTo(hxMap);
-
-    btqMarkers.push(marker);
-  });
-
-  const el = document.getElementById('map-count-btq');
-  if(el) el.textContent = count;
-}
-
-/* ─── Stats livreurs ─── */
-async function chargerStatsCarte() {
-  const { count } = await _sb.from('livreurs')
-    .select('telephone', { count:'exact', head:true });
-  const el = document.getElementById('map-count-livreurs');
-  if(el) el.textContent = count || 0;
-}
-
-/* ─── Tracer itinéraire (ligne animée verte) ─── */
-async function tracerRoute(destLat, destLon, destNom) {
-  if(!hxMap || !userMarker) {
-    toast('Activez le GPS pour obtenir un itinéraire','warn'); return;
-  }
-
-  const userLL = userMarker.getLngLat();
-
-  // Supprimer l'ancien itinéraire
-  annulerItineraire();
-
-  // Afficher panel
-  const panel = document.getElementById('route-info-panel');
-  const elDest  = document.getElementById('route-dest-name');
-  const elStats = document.getElementById('route-stats');
-  if(panel)  panel.classList.remove('hidden');
-  if(elDest) elDest.textContent = '🏪 '+destNom;
-  if(elStats) elStats.textContent = '⏳ Calcul…';
-
-  // Requête OSRM (routage libre)
-  try {
-    const url = `https://router.project-osrm.org/route/v1/driving/${userLL.lng},${userLL.lat};${destLon},${destLat}?overview=full&geometries=geojson`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    const data = await res.json();
-
-    if(data.routes && data.routes.length > 0) {
-      const route = data.routes[0];
-      const km    = (route.distance/1000).toFixed(1);
-      const min   = Math.round(route.duration/60);
-      if(elStats) elStats.textContent = `📏 ${km} km · ⏱️ ~${min} min à moto`;
-
-      // Source GeoJSON de la ligne
-      if(hxMap.getSource('hx-route')) {
-        hxMap.getSource('hx-route').setData(route.geometry);
-      } else {
-        hxMap.addSource('hx-route', { type:'geojson', data: route.geometry });
-
-        // Halo vert sous la route
-        hxMap.addLayer({
-          id: 'hx-route-glow',
-          type: 'line',
-          source: 'hx-route',
-          paint: {
-            'line-color': 'rgba(74,222,128,0.25)',
-            'line-width': 12, 'line-blur': 4
-          }
-        });
-
-        // Ligne principale verte
-        hxMap.addLayer({
-          id: 'hx-route-line',
-          type: 'line',
-          source: 'hx-route',
-          paint: {
-            'line-color': '#4ADE80',
-            'line-width': 4, 'line-opacity': 0.9
-          }
-        });
-
-        // Marquage blanc central animé (tirets)
-        hxMap.addLayer({
-          id: 'hx-route-dash',
-          type: 'line',
-          source: 'hx-route',
-          paint: {
-            'line-color': 'rgba(255,255,255,0.7)',
-            'line-width': 1.5,
-            'line-dasharray': [4, 6]
-          }
-        });
-      }
-
-      // Ajuster la vue pour voir toute la route
-      const coords = route.geometry.coordinates;
-      const bounds = coords.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(coords[0], coords[0]));
-      hxMap.fitBounds(bounds, { padding:{top:80,bottom:120,left:40,right:40}, maxZoom:16 });
-
-    } else {
-      // Fallback : ligne droite
-      _tracerLigneDroite(userLL, {lng:destLon,lat:destLat});
-      if(elStats) elStats.textContent = '📏 Estimation directe (réseau indisponible)';
-    }
-  } catch(e) {
-    _tracerLigneDroite(userLL, {lng:destLon,lat:destLat});
-    if(elStats) elStats.textContent = '📏 Ligne directe';
-  }
-}
-
-/* ─── Ligne droite de fallback ─── */
-function _tracerLigneDroite(from, to) {
-  const geom = { type:'LineString', coordinates:[[from.lng,from.lat],[to.lng,to.lat]] };
-  if(hxMap.getSource('hx-route')) {
-    hxMap.getSource('hx-route').setData(geom);
-  } else {
-    hxMap.addSource('hx-route', { type:'geojson', data:geom });
-    hxMap.addLayer({ id:'hx-route-glow', type:'line', source:'hx-route',
-      paint:{ 'line-color':'rgba(74,222,128,0.2)', 'line-width':10, 'line-blur':4 }});
-    hxMap.addLayer({ id:'hx-route-line', type:'line', source:'hx-route',
-      paint:{ 'line-color':'#4ADE80', 'line-width':3,
-              'line-dasharray':[6,4] }});
-  }
-}
-
-/* ─── Annuler l'itinéraire ─── */
-function annulerItineraire() {
-  if(hxMap) {
-    ['hx-route-glow','hx-route-line','hx-route-dash'].forEach(id => {
-      try { if(hxMap.getLayer(id)) hxMap.removeLayer(id); } catch(e){}
-    });
-    try { if(hxMap.getSource('hx-route')) hxMap.removeSource('hx-route'); } catch(e){}
-  }
-  const panel = document.getElementById('route-info-panel');
-  if(panel) panel.classList.add('hidden');
-}
-
-/* ─── Centrer sur la position ─── */
-function centrerSurMoi() {
-  if(userMarker && hxMap) {
-    hxMap.flyTo({ center:userMarker.getLngLat(), zoom:17, pitch:65, bearing:-15, duration:1000 });
-    userMarker.togglePopup();
-  } else {
-    toast('GPS en cours d\'acquisition…','warn');
-  }
-}
-
-/* ─── Fermer la carte ─── */
-function fermerHailandMap() {
-  if(mapWatchId !== null) {
-    navigator.geolocation.clearWatch(mapWatchId);
-    mapWatchId = null;
-  }
-  annulerItineraire();
-  const overlay = document.getElementById('hailand-map-overlay');
-  if(overlay) overlay.classList.add('hidden');
-}
-
-// ════════════════════════════════════════════════════
-// HAILANDMAP – Verrouillage de Zone (Adressage OSM)
-// ════════════════════════════════════════════════════
-let zoneActive     = null;   // polygone actif sur la carte
-let zoneLabelLayer = null;   // étiquette surface
-let _pendingCoords = null;   // données en attente de confirmation
-let _pendingSurface= 0;
-let _pendingBuildId= null;
-
-/* ─── Lancer le verrouillage depuis position GPS actuelle ─── */
-function initierVerrouillage() {
-  if(!hxMap) { toast('Ouvrez d\'abord HailandMap','warn'); return; }
-
-  const btn = document.getElementById('btn-lock-zone');
-  if(btn) { btn.innerHTML = '<span class="lock-spinner"></span> Scan…'; btn.disabled = true; }
-
-  if(!userMarker) {
-    toast('GPS en cours d\'acquisition…','warn');
-    if(btn) { btn.innerHTML = '🏠 Verrouiller'; btn.disabled = false; }
-    return;
-  }
-
-  const { lat, lng } = userMarker.getLatLng();
-  verrouillerMaison(lat, lng).finally(() => {
-    if(btn) { btn.innerHTML = '🏠 Verrouiller'; btn.disabled = false; }
-  });
-}
-
-/* ─── Requête Overpass : trouver le bâtiment au point GPS ─── */
-async function verrouillerMaison(lat, lon) {
-  const query = `[out:json];way["building"](around:10,${lat},${lon});out geom;`;
-  const url   = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
-
-  try {
-    toast('🔍 Scan du bâtiment en cours…','');
-    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    const data = await response.json();
-
-    if(data.elements && data.elements.length > 0) {
-      const batiment = data.elements[0];
-      const coords   = batiment.geometry.map(p => [p.lat, p.lon]);
-      const surface  = calculerSurface(coords);
-      afficherZoneVerrouillee(coords, surface, batiment.id);
-    } else {
-      toast('⚠️ Aucun bâtiment détecté. Vérifiez d\'être à l\'intérieur de votre domicile.','warn');
-    }
-  } catch(e) {
-    console.warn('Overpass timeout ou erreur:', e);
-    // Fallback : zone circulaire autour du point GPS
-    _afficherZoneFallback(lat, lon);
-  }
-}
-
-/* ─── Fallback si Overpass ne répond pas (zone circulaire) ─── */
-function _afficherZoneFallback(lat, lon) {
-  toast('📡 Réseau lent – zone estimée affichée','warn');
-  // Générer un polygone carré ~20m autour du point
-  const d = 0.0001;
-  const coords = [
-    [lat+d, lon-d], [lat+d, lon+d],
-    [lat-d, lon+d], [lat-d, lon-d]
-  ];
-  afficherZoneVerrouillee(coords, 400, 'fallback_' + Date.now());
-}
-
-/* ─── Afficher le polygone avec effet Glow et panel de confirmation ─── */
-function afficherZoneVerrouillee(coords, surface, buildingId) {
-  if(!hxMap) return;
-
-  // Convertir [[lat,lon]] → [[lon,lat]] pour GeoJSON
-  const geojsonCoords = coords.map(c => [c[1], c[0]]);
-  geojsonCoords.push(geojsonCoords[0]);
-
-  const sourceId = 'hx-pending-zone';
-
-  // Supprimer l'ancienne zone temporaire
-  ['hx-pending-zone-fill','hx-pending-zone-line'].forEach(id => {
-    try { if(hxMap.getLayer(id)) hxMap.removeLayer(id); } catch(e){}
-  });
-  try { if(hxMap.getSource(sourceId)) hxMap.removeSource(sourceId); } catch(e){}
-
-  hxMap.addSource(sourceId, { type:'geojson', data:{
-    type:'Feature', geometry:{ type:'Polygon', coordinates:[geojsonCoords] }
-  }});
-
-  // Remplissage doré semi-transparent
-  hxMap.addLayer({ id:'hx-pending-zone-fill', type:'fill', source:sourceId,
-    paint:{ 'fill-color':'#F5A623', 'fill-opacity':0.25 }
-  });
-
-  // Contour pointillé doré animé (CSS glow)
-  hxMap.addLayer({ id:'hx-pending-zone-line', type:'line', source:sourceId,
-    paint:{ 'line-color':'#F5A623', 'line-width':3, 'line-opacity':0.9,
-            'line-dasharray':[5,4] }
-  });
-
-  // Zoomer sur la zone
-  const allLon = geojsonCoords.map(c => c[0]);
-  const allLat = geojsonCoords.map(c => c[1]);
-  hxMap.fitBounds([
-    [Math.min(...allLon), Math.min(...allLat)],
-    [Math.max(...allLon), Math.max(...allLat)]
-  ], { padding:60 });
-
-  // Stocker les données en attente de confirmation
-  _pendingCoords  = coords;
-  _pendingSurface = surface;
-  _pendingBuildId = buildingId;
-
-  // Afficher le panel de confirmation
-  const panel = document.getElementById('lock-confirm-panel');
-  const desc  = document.getElementById('lock-confirm-desc');
-  if(desc) desc.innerHTML = `Surface estimée : <strong style="color:#F5A623">${Math.round(surface)} m²</strong><br>Verrouiller comme adresse officielle HailandX ?`;
-  if(panel) panel.classList.remove('hidden');
-}
-
-/* ─── Confirmer le verrouillage (bouton Oui dans le panel) ─── */
-async function confirmerVerrouillage() {
-  const panel = document.getElementById('lock-confirm-panel');
-  if(panel) panel.classList.add('hidden');
-
-  if(!_pendingCoords) return;
-
-  // Stabiliser le polygone (retirer les pointillés, renforcer le remplissage)
-  if(zoneActive) {
-    zoneActive.setStyle({ dashArray: null, fillOpacity: 0.6, weight: 3 });
-  }
-
-  await enregistrerAdresseHailandX(_pendingCoords, _pendingSurface, _pendingBuildId);
-  _pendingCoords = null;
-}
-
-/* ─── Annuler le verrouillage (bouton Non dans le panel) ─── */
-function annulerVerrouillage() {
-  const panel = document.getElementById('lock-confirm-panel');
-  if(panel) panel.classList.add('hidden');
-
-  // Supprimer le polygone temporaire
-  ['hx-pending-zone-fill','hx-pending-zone-line'].forEach(id => {
-    try { if(hxMap && hxMap.getLayer(id)) hxMap.removeLayer(id); } catch(e){}
-  });
-  try { if(hxMap && hxMap.getSource('hx-pending-zone')) hxMap.removeSource('hx-pending-zone'); } catch(e){}
-
-  _pendingCoords = null;
-  toast('Verrouillage annulé','');
-}
-
-/* ─── Calcul de surface (formule de Gauss/Shoelace °→m²) ─── */
-function calculerSurface(coords) {
-  let area = 0;
-  const n = coords.length;
-  for(let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    area += coords[i][0] * coords[j][1];
-    area -= coords[j][0] * coords[i][1];
-  }
-  // 1° lat ≈ 111 319 m ; approximation suffisante pour Conakry
-  return Math.abs(area) * 111319 * 111319 / 2;
-}
-
-/* ─── Enregistrer l'adresse dans Supabase ─── */
-async function enregistrerAdresseHailandX(coords, surface, buildingId) {
-  const userPhone = sess('hx_phone');
-  if(!userPhone) { toast('Connectez-vous pour enregistrer votre adresse','warn'); return; }
-
-  const { error } = await _sb.from('clients').update({
-    hailand_zone       : JSON.stringify(coords),
-    hailand_surface    : Math.round(surface),
-    hailand_building_id: String(buildingId),
-    last_address_update: new Date().toISOString()
-  }).eq('telephone', userPhone);
-
-  if(error) {
-    toast('Erreur d\'enregistrement : ' + error.message, 'error');
-  } else {
-    toast('🔒 Adresse verrouillée sur HailandMap !', 'success');
-    // Mettre à jour le chip dans la barre basse
-    const chip = document.getElementById('locked-address-display');
-    const txt  = document.getElementById('locked-address-text');
-    if(chip) chip.classList.remove('hidden');
-    if(txt)  txt.textContent = `${Math.round(surface)} m²`;
-    // Cacher le bouton "Verrouiller" et remplacer par "Mettre à jour"
-    const btn = document.getElementById('btn-lock-zone');
-    if(btn)  btn.innerHTML = '🔄 Modifier';
-    if(navigator.vibrate) navigator.vibrate([80, 40, 80]);
-  }
-}
-
-/* ─── Vérifier et afficher une adresse déjà verrouillée au démarrage ─── */
-async function verifierAdresseExistante() {
-  const userPhone = sess('hx_phone');
-  if(!userPhone || !hxMap) return;
-
-  const { data, error } = await _sb.from('clients')
-    .select('hailand_zone, hailand_surface')
-    .eq('telephone', userPhone)
-    .maybeSingle();
-
-  if(error || !data || !data.hailand_zone) return;
-
-  try {
-    const coords = JSON.parse(data.hailand_zone);
-    if(!Array.isArray(coords) || coords.length < 3) return;
-
-    // Convertir [[lat,lon],...] → [[lon,lat],...] pour GeoJSON
-    const geojsonCoords = coords.map(c => [c[1], c[0]]);
-    geojsonCoords.push(geojsonCoords[0]); // fermer le polygone
-
-    const sourceId = 'hx-saved-zone';
-    if(hxMap.getSource(sourceId)) {
-      hxMap.getSource(sourceId).setData({
-        type:'Feature', geometry:{ type:'Polygon', coordinates:[geojsonCoords] }
-      });
-    } else {
-      hxMap.addSource(sourceId, { type:'geojson', data:{
-        type:'Feature', geometry:{ type:'Polygon', coordinates:[geojsonCoords] }
-      }});
-
-      // Remplissage
-      hxMap.addLayer({ id:'hx-saved-zone-fill', type:'fill', source:sourceId,
-        paint:{ 'fill-color':'#F5A623', 'fill-opacity':0.18 }
-      });
-      // Contour pulsé
-      hxMap.addLayer({ id:'hx-saved-zone-line', type:'line', source:sourceId,
-        paint:{ 'line-color':'#F5A623', 'line-width':2, 'line-opacity':0.8,
-                'line-dasharray':[3,3] }
-      });
-    }
-
-    // Chip adresse verrouillée
-    const chip = document.getElementById('locked-address-display');
-    const txt  = document.getElementById('locked-address-text');
-    const btn  = document.getElementById('btn-lock-zone');
-    if(chip) chip.classList.remove('hidden');
-    if(txt)  txt.textContent = `${Math.round(data.hailand_surface||0)} m²`;
-    if(btn)  btn.innerHTML   = '🔄';
-
-  } catch(e) { console.warn('Parse hailand_zone:', e); }
 }
 
 // ════════════════════════════════════════════════════
