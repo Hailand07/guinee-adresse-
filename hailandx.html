@@ -4602,6 +4602,23 @@ function _initMapLibre() {
 
       console.log('[HailandMap] Source vectorielle détectée :', srcName);
 
+      // Sol de fond — teinte gris-vert sombre (comme dans la référence)
+      // Modifier la couleur de fond du style pour qu'elle ne soit pas noire
+      try {
+        const bgLayers = hxMap.getStyle().layers.filter(l => l.type === 'background');
+        bgLayers.forEach(l => {
+          try { hxMap.setPaintProperty(l.id, 'background-color', '#10141a'); } catch(e){}
+        });
+        // Sol entre les bâtiments (landuse residential)
+        const landLayers = hxMap.getStyle().layers.filter(l =>
+          l['source-layer'] === 'landuse' || l['source-layer'] === 'landcover'
+        );
+        landLayers.forEach(l => {
+          try { hxMap.setPaintProperty(l.id, 'fill-color', '#141a20'); } catch(e){}
+          try { hxMap.setPaintProperty(l.id, 'fill-opacity', 1); } catch(e){}
+        });
+      } catch(e) {}
+
       // Détecter les source-layers disponibles dans cette source
       // en parcourant les couches existantes du style
       const existingLayers = hxMap.getStyle().layers || [];
@@ -4645,6 +4662,23 @@ function _initMapLibre() {
       _ajouterCouchesEau(srcName, SL.water, SL.waterway);
       _ajouterLumieresNocturnes(srcName, SL.building, SL.transport);
       _configurerAmbiance();
+
+      // Masquer les couches de bâtiments du style de base (CartoCDN Dark Matter)
+      // pour éviter le double-rendu qui cause l'effet fantôme/transparent
+      const baseLayers = hxMap.getStyle().layers || [];
+      baseLayers.forEach(l => {
+        const id = l.id || '';
+        // Masquer les fill-extrusion existants du style de base
+        if(l.type === 'fill-extrusion' && id !== 'hailand-buildings-3d' && id !== 'hailand-buildings-roof' && id !== 'building-shadow') {
+          try { hxMap.setLayoutProperty(l.id, 'visibility', 'none'); } catch(e){}
+        }
+        // Masquer les couches routes du style de base (on a les nôtres)
+        if((l.type === 'line') && (id.includes('road') || id.includes('tunnel') || id.includes('bridge') || id.includes('rail')) &&
+           !id.startsWith('hailand-')) {
+          try { hxMap.setLayoutProperty(l.id, 'visibility', 'none'); } catch(e){}
+        }
+      });
+
       resolve();
     });
 
@@ -4666,22 +4700,24 @@ function _ajouterCouchesBatiments(src, sl, HEIGHT, BASE) {
   if(!sl) { console.warn('[HailandMap] source-layer building absent'); return; }
   if(hxMap.getLayer('building-shadow')) return;
 
-  // Ombre au sol décalée
+  // 1. Sol / ombre portée au sol (très sombre, décalée)
   hxMap.addLayer({
     id: 'building-shadow',
     type: 'fill-extrusion',
     source: src, 'source-layer': sl,
     filter: ['!=', ['get', 'hide_3d'], true],
     paint: {
-      'fill-extrusion-color': '#05080f',
-      'fill-extrusion-height': ['+', HEIGHT, 1],
+      'fill-extrusion-color': '#020408',
+      'fill-extrusion-height': HEIGHT,
       'fill-extrusion-base': 0,
-      'fill-extrusion-opacity': 0.55,
-      'fill-extrusion-translate': [3, 4]
+      'fill-extrusion-opacity': 0.70,
+      'fill-extrusion-translate': [4, 5]
     }
   });
 
-  // Corps principal — bâtiments solides, chauds, éclairés comme dans la référence
+  // 2. MURS — opacité 1.0, couleur brun-terre chaude, gradient vertical activé
+  //    Le gradient vertical de MapLibre éclaircit naturellement le haut (face éclairée)
+  //    et assombrit le bas (face dans l'ombre) → effet réaliste sans couche supplémentaire
   hxMap.addLayer({
     id: 'hailand-buildings-3d',
     type: 'fill-extrusion',
@@ -4690,51 +4726,57 @@ function _ajouterCouchesBatiments(src, sl, HEIGHT, BASE) {
     paint: {
       'fill-extrusion-color': [
         'interpolate', ['linear'], HEIGHT,
-        0,  '#3a3020',   // rez-de-chaussée — brun sombre
-        4,  '#4a3c28',   // maison standard
-        8,  '#523e2a',   // immeuble bas
-        15, '#5a4530',   // immeuble moyen
-        30, '#6b5038'    // tour — plus clair
+        0,  '#3d2e18',   // rez-de-chaussée brun foncé
+        4,  '#4e3a20',   // maison standard — brun moyen
+        8,  '#5a4228',   // immeuble bas — brun chaud
+        15, '#634a2e',   // immeuble moyen
+        30, '#705438'    // tour — brun clair
       ],
       'fill-extrusion-height':  HEIGHT,
       'fill-extrusion-base':    BASE,
       'fill-extrusion-opacity': 1.0,
-      'fill-extrusion-vertical-gradient': true
+      'fill-extrusion-vertical-gradient': true   // ← assombrit base, éclaircit sommet
     }
   });
 
-  // Toit — tuile sombre contrastante, bien visible
+  // 3. TOITS — plan horizontal, couleur ardoise sombre contrastante
   hxMap.addLayer({
     id: 'hailand-buildings-roof',
     type: 'fill-extrusion',
     source: src, 'source-layer': sl,
     filter: ['all', ['!=', ['get', 'hide_3d'], true], ['>', HEIGHT, 1]],
     paint: {
-      'fill-extrusion-color': '#2a2218',
-      'fill-extrusion-height': ['+', HEIGHT, 0.3],
+      'fill-extrusion-color': [
+        'interpolate', ['linear'], HEIGHT,
+        0,  '#1e1a14',
+        10, '#252018',
+        25, '#2e2820'
+      ],
+      'fill-extrusion-height': ['+', HEIGHT, 0.5],
       'fill-extrusion-base':   HEIGHT,
       'fill-extrusion-opacity': 1.0
     }
   });
 
-  // Façades éclairées (fenêtres allumées — teinte or chaude sur le devant)
-  hxMap.addLayer({
-    id: 'hailand-buildings-lit',
-    type: 'fill-extrusion',
-    source: src, 'source-layer': sl,
-    filter: ['!=', ['get', 'hide_3d'], true],
-    paint: {
-      'fill-extrusion-color': 'rgba(255,200,100,0.22)',
-      'fill-extrusion-height':  HEIGHT,
-      'fill-extrusion-base':    BASE,
-      'fill-extrusion-opacity': [
-        'interpolate',['linear'],['zoom'],
-        14, 0.0,
-        16, 0.6,
-        18, 0.9
-      ]
-    }
-  });
+  // 4. FENÊTRES ÉCLAIRÉES — couche fill 2D (pas fill-extrusion) pour éviter l'effet fantôme
+  //    Visible uniquement à fort zoom, simulant des fenêtres allumées vues du dessus
+  if(!hxMap.getLayer('hailand-windows-2d')) {
+    hxMap.addLayer({
+      id: 'hailand-windows-2d',
+      type: 'fill',
+      source: src, 'source-layer': sl,
+      filter: ['!=', ['get', 'hide_3d'], true],
+      paint: {
+        'fill-color': 'rgba(255, 210, 100, 1)',
+        'fill-opacity': [
+          'interpolate', ['linear'], ['zoom'],
+          14, 0.0,
+          16, 0.08,
+          18, 0.18
+        ]
+      }
+    });
+  }
 }
 
 /* ─── Couches Routes ─── */
@@ -4742,169 +4784,159 @@ function _ajouterCouchesRoutes(src, sl) {
   if(!sl) { console.warn('[HailandMap] source-layer transport absent'); return; }
   if(hxMap.getLayer('hailand-roads-glow')) return;
 
+  // Les largeurs utilisent 'line-width' en pixels FIXES (pas interpolées sur le zoom)
+  // Pour que les routes gardent la même taille visuelle quelle que soit le niveau de zoom.
+  // On utilise uniquement des valeurs constantes ou très légèrement adaptées.
+
   const MAIN_FILTER  = ['in', ['get','class'], ['literal',['primary','secondary','trunk','motorway']]];
   const MINOR_FILTER = ['in', ['get','class'], ['literal',['minor','residential','service','track','path']]];
-  const DASH_FILTER  = ['in', ['get','class'], ['literal',['primary','secondary','trunk']]];
 
-  // Halo orangé (lampadaires) — toutes routes
-  hxMap.addLayer({
-    id: 'hailand-roads-glow', type: 'line', source: src, 'source-layer': sl,
-    filter: MAIN_FILTER,
-    paint: {
-      'line-color': 'rgba(245,166,35,0.18)',
-      'line-width': ['interpolate',['linear'],['zoom'], 12,14, 16,28, 19,44],
-      'line-blur': 8
-    }
-  }, 'hailand-buildings-3d');
+  // ── ROUTES PRINCIPALES ──
 
-  // Halo doux sur petites routes aussi
+  // Halo lumineux orangé (éclairage de rue) — SOUS les bâtiments
   hxMap.addLayer({
-    id: 'hailand-roads-minor-glow', type: 'line', source: src, 'source-layer': sl,
-    filter: MINOR_FILTER,
-    paint: {
-      'line-color': 'rgba(245,150,20,0.10)',
-      'line-width': ['interpolate',['linear'],['zoom'], 13,6, 16,14, 19,24],
-      'line-blur': 5
-    }
-  }, 'hailand-buildings-3d');
-
-  // Route principale sombre — goudron
-  hxMap.addLayer({
-    id: 'hailand-roads-main', type: 'line', source: src, 'source-layer': sl,
-    filter: MAIN_FILTER,
-    paint: {
-      'line-color': '#1c2235',
-      'line-width': ['interpolate',['linear'],['zoom'], 12,4, 16,13, 19,22]
-    }
-  }, 'hailand-buildings-3d');
-
-  // Rues secondaires — même couleur goudron, visible
-  hxMap.addLayer({
-    id: 'hailand-roads-minor', type: 'line', source: src, 'source-layer': sl,
-    filter: MINOR_FILTER,
-    paint: {
-      'line-color': '#1a2030',
-      'line-width': ['interpolate',['linear'],['zoom'], 13,2.5, 16,8, 19,14]
-    }
-  }, 'hailand-buildings-3d');
-
-  // ✦ Tirets blancs au centre — routes principales ✦
-  hxMap.addLayer({
-    id: 'hailand-roads-dash', type: 'line', source: src, 'source-layer': sl,
-    filter: DASH_FILTER,
-    paint: {
-      'line-color': 'rgba(255,255,255,0.55)',
-      'line-width': ['interpolate',['linear'],['zoom'], 13,0.9, 16,2.0, 19,3.8],
-      'line-dasharray': [3, 5]
-    }
-  });
-
-  // ✦ Tirets blancs sur les petites routes aussi ✦
-  hxMap.addLayer({
-    id: 'hailand-roads-minor-dash', type: 'line', source: src, 'source-layer': sl,
-    filter: MINOR_FILTER,
-    paint: {
-      'line-color': 'rgba(255,255,255,0.28)',
-      'line-width': ['interpolate',['linear'],['zoom'], 14,0.5, 16,1.2, 19,2.2],
-      'line-dasharray': [2, 6]
-    }
-  });
-
-  // Reflet orangé bord de route — routes principales
-  hxMap.addLayer({
-    id: 'hailand-roads-edge', type: 'line', source: src, 'source-layer': sl,
+    id: 'hailand-roads-glow',
+    type: 'line', source: src, 'source-layer': sl,
     filter: MAIN_FILTER,
     paint: {
       'line-color': 'rgba(245,166,35,0.22)',
-      'line-width': ['interpolate',['linear'],['zoom'], 13,0.8, 16,2.5],
-      'line-gap-width': ['interpolate',['linear'],['zoom'], 13,4, 16,13]
+      'line-width': 18,
+      'line-blur': 10
+    }
+  }, 'hailand-buildings-3d');
+
+  // Surface goudron principale
+  hxMap.addLayer({
+    id: 'hailand-roads-main',
+    type: 'line', source: src, 'source-layer': sl,
+    filter: MAIN_FILTER,
+    paint: {
+      'line-color': '#1c2235',
+      'line-width': 10
+    }
+  }, 'hailand-buildings-3d');
+
+  // Bord lumineux orangé sur route principale (reflet lampadaire sur asphalte)
+  hxMap.addLayer({
+    id: 'hailand-roads-edge',
+    type: 'line', source: src, 'source-layer': sl,
+    filter: MAIN_FILTER,
+    paint: {
+      'line-color': 'rgba(245,166,35,0.30)',
+      'line-width': 1.5,
+      'line-gap-width': 10
     }
   });
 
-  // Reflet orangé bord de route — petites routes
+  // Tirets blancs au centre route principale
   hxMap.addLayer({
-    id: 'hailand-roads-minor-edge', type: 'line', source: src, 'source-layer': sl,
+    id: 'hailand-roads-dash',
+    type: 'line', source: src, 'source-layer': sl,
+    filter: ['in', ['get','class'], ['literal',['primary','secondary','trunk','motorway']]],
+    paint: {
+      'line-color': 'rgba(255,255,255,0.55)',
+      'line-width': 1.4,
+      'line-dasharray': [4, 6]
+    }
+  });
+
+  // ── RUES SECONDAIRES / RÉSIDENTIELLES ──
+
+  // Halo doux orangé
+  hxMap.addLayer({
+    id: 'hailand-roads-minor-glow',
+    type: 'line', source: src, 'source-layer': sl,
     filter: MINOR_FILTER,
     paint: {
-      'line-color': 'rgba(245,166,35,0.12)',
-      'line-width': ['interpolate',['linear'],['zoom'], 14,0.5, 16,1.5],
-      'line-gap-width': ['interpolate',['linear'],['zoom'], 14,2.5, 16,8]
+      'line-color': 'rgba(220,140,20,0.14)',
+      'line-width': 10,
+      'line-blur': 6
+    }
+  }, 'hailand-buildings-3d');
+
+  // Surface goudron secondaire
+  hxMap.addLayer({
+    id: 'hailand-roads-minor',
+    type: 'line', source: src, 'source-layer': sl,
+    filter: MINOR_FILTER,
+    paint: {
+      'line-color': '#181e2e',
+      'line-width': 6
+    }
+  }, 'hailand-buildings-3d');
+
+  // Bord lumineux sur rue secondaire
+  hxMap.addLayer({
+    id: 'hailand-roads-minor-edge',
+    type: 'line', source: src, 'source-layer': sl,
+    filter: MINOR_FILTER,
+    paint: {
+      'line-color': 'rgba(220,140,20,0.20)',
+      'line-width': 1.0,
+      'line-gap-width': 6
+    }
+  });
+
+  // Tirets blancs sur rues secondaires
+  hxMap.addLayer({
+    id: 'hailand-roads-minor-dash',
+    type: 'line', source: src, 'source-layer': sl,
+    filter: MINOR_FILTER,
+    paint: {
+      'line-color': 'rgba(255,255,255,0.30)',
+      'line-width': 0.8,
+      'line-dasharray': [3, 8]
     }
   });
 }
 
 /* ─── Couches Végétation ─── */
 function _ajouterCouchesVegetation(src, sl) {
-  // Zones vertes — vert plus vif et visible comme dans la référence
   if(sl && !hxMap.getLayer('hailand-parks')) {
+    // Sol des parcs / zones vertes — vert foncé réaliste
     hxMap.addLayer({
-      id: 'hailand-parks', type: 'fill', source: src, 'source-layer': sl,
+      id: 'hailand-parks',
+      type: 'fill', source: src, 'source-layer': sl,
       filter: ['in', ['get','class'], ['literal',['wood','forest','grass','meadow','park','scrub','wetland','recreation_ground']]],
       paint: {
         'fill-color': [
           'match', ['get','class'],
-          'wood',    '#1a3d1e',
-          'forest',  '#17381b',
-          'grass',   '#1e4422',
-          'park',    '#204826',
-          '#183a1c'
+          'wood',    '#1c3d1e',
+          'forest',  '#193a1b',
+          'grass',   '#224422',
+          'park',    '#234825',
+          '#1a3c1c'
         ],
-        'fill-opacity': 0.95
+        'fill-opacity': 1.0
       }
     }, 'hailand-buildings-3d');
 
+    // Canopée des arbres — couche fill étendue légèrement plus claire simulant le feuillage vu du ciel
     hxMap.addLayer({
-      id: 'hailand-parks-border', type: 'line', source: src, 'source-layer': sl,
+      id: 'hailand-tree-canopy',
+      type: 'fill', source: src, 'source-layer': sl,
       filter: ['in', ['get','class'], ['literal',['wood','forest','park']]],
-      paint: { 'line-color':'rgba(74,222,128,0.22)', 'line-width':1.0 }
+      paint: {
+        'fill-color': '#2a5c2e',
+        'fill-opacity': [
+          'interpolate',['linear'],['zoom'],
+          12, 0.5,
+          16, 0.8
+        ],
+        'fill-translate': [0, -1]   // décalage léger vers le haut = illusion de hauteur
+      }
+    }, 'hailand-buildings-3d');
+
+    // Bordure verte des parcs
+    hxMap.addLayer({
+      id: 'hailand-parks-border',
+      type: 'line', source: src, 'source-layer': sl,
+      filter: ['in', ['get','class'], ['literal',['wood','forest','park']]],
+      paint: { 'line-color':'rgba(90,210,100,0.30)', 'line-width': 1.2 }
     });
   }
 
-  // Arbres emoji DOM sur des positions réelles de Conakry
-  hxMap.once('idle', _ajouterArbresDom);
-}
-
-/* ─── Arbres DOM (figurines 🌳) ─── */
-let _arbresDomAjoutes = false;
-function _ajouterArbresDom() {
-  if(_arbresDomAjoutes || !hxMap) return;
-  _arbresDomAjoutes = true;
-
-  // Points de végétation réels à Conakry (Jardin botanique, Corniche, Kaporo, etc.)
-  const positions = [
-    // Jardin de Guinée / zones vertes Kaloum
-    [-13.6760, 9.5415], [-13.6748, 9.5422], [-13.6772, 9.5408],
-    [-13.6758, 9.5430], [-13.6744, 9.5415],
-    // Corniche
-    [-13.6830, 9.5340], [-13.6845, 9.5328], [-13.6855, 9.5352],
-    [-13.6820, 9.5355], [-13.6840, 9.5365],
-    // Ratoma / Kaporo
-    [-13.6700, 9.5480], [-13.6688, 9.5465], [-13.6712, 9.5495],
-    [-13.6695, 9.5450], [-13.6720, 9.5470],
-    // Matam
-    [-13.6630, 9.5390], [-13.6618, 9.5402], [-13.6645, 9.5378],
-    // Dixinn
-    [-13.6580, 9.5510], [-13.6568, 9.5498], [-13.6592, 9.5522],
-  ];
-
-  const treeEmojis = ['🌳','🌴','🌲','🌿'];
-
-  positions.forEach((pos, i) => {
-    const el = document.createElement('div');
-    const emoji = treeEmojis[i % treeEmojis.length];
-    // Taille variable pour plus de réalisme
-    const size = 0.9 + Math.random() * 0.5;
-    el.innerHTML = emoji;
-    el.style.cssText = `
-      font-size:${size}rem;
-      filter: drop-shadow(0 0 5px rgba(74,222,128,0.5)) drop-shadow(0 2px 2px rgba(0,0,0,0.6));
-      pointer-events:none; user-select:none;
-      transform: rotate(${(Math.random()-0.5)*10}deg);
-    `;
-    new maplibregl.Marker({ element:el, anchor:'bottom' })
-      .setLngLat(pos)
-      .addTo(hxMap);
-  });
+  // PAS d'arbres emoji flottants — les zones fill suffisent pour le réalisme
 }
 
 /* ─── Couches Eau ─── */
@@ -4948,63 +4980,61 @@ function _ajouterCouchesEau(src, slWater, slWaterway) {
 
 /* ─── Lumières nocturnes ─── */
 function _ajouterLumieresNocturnes(src, slBuilding, slTransport) {
-  // Halos de lampadaires : cercles orangés le long des routes — bien lumineux
-  if(slTransport && !hxMap.getLayer('hailand-streetlights')) {
-    try {
-      hxMap.addLayer({
-        id: 'hailand-streetlights', type: 'circle', source: src, 'source-layer': slTransport,
-        filter: ['in', ['get','class'], ['literal',['primary','secondary','trunk','minor','residential']]],
-        paint: {
-          'circle-color': 'rgba(255,190,60,0.18)',
-          'circle-radius': ['interpolate',['linear'],['zoom'], 13,10, 16,26, 19,50],
-          'circle-blur': 0.80,
-          'circle-pitch-alignment': 'map'
-        }
-      });
-    } catch(e){}
-  }
+  // ── PAS de 'circle' sur les source-layer de transport ──
+  // (ça crée des boules lumineuses sur chaque feature/segment de route → effet bizarre)
+  // On utilise uniquement des sources GeoJSON de points précis.
 
-  // Fenêtres éclairées — tache or vive, bien visible
-  if(slBuilding && !hxMap.getLayer('hailand-windows')) {
+  // Fenêtres éclairées — couche fill 2D sur les emprises au sol des bâtiments
+  // (pas fill-extrusion pour éviter l'effet fantôme transparent)
+  if(slBuilding && !hxMap.getLayer('hailand-windows-glow')) {
     try {
       hxMap.addLayer({
-        id: 'hailand-windows', type: 'fill', source: src, 'source-layer': slBuilding,
-        filter: ['any',
-          ['>', ['coalesce',['get','height'],['get','render_height'],0], 3],
-          ['>', ['coalesce',['get','building:levels'],0], 1]
-        ],
+        id: 'hailand-windows-glow',
+        type: 'fill',
+        source: src, 'source-layer': slBuilding,
         paint: {
-          'fill-color': 'rgba(255,220,100,0.20)',
+          'fill-color': '#FFD580',
           'fill-opacity': [
-            'interpolate',['linear'],['zoom'],
-            13, 0.2,
-            15, 0.6,
-            17, 1.0
+            'interpolate', ['linear'], ['zoom'],
+            13, 0.0,
+            15, 0.05,
+            17, 0.12,
+            19, 0.18
           ]
         }
       });
-    } catch(e){}
+    } catch(e) { console.warn('windows-glow:', e); }
   }
 
-  // Lampadaires individuels : points lumineux aux carrefours via GeoJSON généré
-  if(!hxMap.getLayer('hailand-lampadaires')) {
-    // Générer des lampadaires le long des axes principaux de Conakry
+  // Lampadaires GeoJSON — points précis sur les trottoirs (côtés des routes)
+  if(!hxMap.getSource('hx-lampadaires')) {
     const lampadaires = _genererLampadaires();
-    hxMap.addSource('hx-lampadaires', { type:'geojson', data:{ type:'FeatureCollection', features: lampadaires }});
+    hxMap.addSource('hx-lampadaires', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: lampadaires }
+    });
+
+    // Halo lumineux flou (cercle orangé doux autour du point)
     hxMap.addLayer({
-      id: 'hailand-lampadaires-glow', type: 'circle', source: 'hx-lampadaires',
+      id: 'hailand-lampadaires-halo',
+      type: 'circle', source: 'hx-lampadaires',
       paint: {
-        'circle-color': 'rgba(255,200,80,0.35)',
-        'circle-radius': ['interpolate',['linear'],['zoom'], 14,10, 16,22, 18,40],
-        'circle-blur': 0.85
+        'circle-color': 'rgba(255,195,60,0.28)',
+        'circle-radius': 14,
+        'circle-blur': 0.88,
+        'circle-pitch-alignment': 'map'
       }
     });
+
+    // Point du lampadaire lui-même (petit, brillant)
     hxMap.addLayer({
-      id: 'hailand-lampadaires', type: 'circle', source: 'hx-lampadaires',
+      id: 'hailand-lampadaires-point',
+      type: 'circle', source: 'hx-lampadaires',
       paint: {
-        'circle-color': '#FFD060',
-        'circle-radius': ['interpolate',['linear'],['zoom'], 14,1.5, 16,2.5, 18,4],
-        'circle-opacity': 1.0
+        'circle-color': '#FFE060',
+        'circle-radius': 2,
+        'circle-opacity': 1.0,
+        'circle-pitch-alignment': 'map'
       }
     });
   }
@@ -5044,24 +5074,34 @@ function _genererLampadaires() {
   return features;
 }
 
-/* ─── Ambiance générale (brouillard + lumière directionnelle) ─── */
+/* ─── Ambiance générale (lumière directionnelle + fond) ─── */
 function _configurerAmbiance() {
-  // Brouillard nocturne à l'horizon — moins dense pour laisser voir
-  try {
-    hxMap.setFog({
-      range: [1, 12],
-      color: '#0d0f14',
-      'horizon-blend': 0.05
-    });
-  } catch(e) {}
-
-  // Lumière chaude puissante (lampadaires vus de haut) — bien éclairé comme sur la référence
+  // Lumière directionnelle simulant des lampadaires à 45° depuis la gauche
+  // position: [radial_offset, azimuthal_angle, polar_angle]
+  // → éclaire le côté gauche des bâtiments, laisse le côté droit dans l'ombre
   try {
     hxMap.setLight({
       anchor: 'viewport',
-      color: '#FFD080',
-      intensity: 0.75,
-      position: [1.2, 210, 60]
+      color: '#FFE8A0',      // blanc-chaud (lumière sodium)
+      intensity: 0.65,
+      position: [1.5, 225, 45]   // vient du coin supérieur gauche
+    });
+  } catch(e) {}
+
+  // Brouillard très léger à l'horizon pour donner de la profondeur
+  try {
+    hxMap.setFog({
+      range: [2, 15],
+      color: '#080c14',
+      'horizon-blend': 0.04
+    });
+  } catch(e) {}
+
+  // Modifier le fond du style (background) pour qu'il soit sombre mais pas noir total
+  try {
+    const bgLayers = hxMap.getStyle().layers.filter(l => l.type === 'background');
+    bgLayers.forEach(l => {
+      try { hxMap.setPaintProperty(l.id, 'background-color', '#0c1018'); } catch(e){}
     });
   } catch(e) {}
 }
