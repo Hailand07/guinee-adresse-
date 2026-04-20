@@ -4681,7 +4681,7 @@ function _ajouterCouchesBatiments(src, sl, HEIGHT, BASE) {
     }
   });
 
-  // Corps principal — dégradé bleu nuit selon la hauteur
+  // Corps principal — bâtiments solides, chauds, éclairés comme dans la référence
   hxMap.addLayer({
     id: 'hailand-buildings-3d',
     type: 'fill-extrusion',
@@ -4690,30 +4690,49 @@ function _ajouterCouchesBatiments(src, sl, HEIGHT, BASE) {
     paint: {
       'fill-extrusion-color': [
         'interpolate', ['linear'], HEIGHT,
-        0,  '#14182a',
-        4,  '#1a2035',
-        10, '#202840',
-        20, '#26304d',
-        40, '#2d3a60'
+        0,  '#3a3020',   // rez-de-chaussée — brun sombre
+        4,  '#4a3c28',   // maison standard
+        8,  '#523e2a',   // immeuble bas
+        15, '#5a4530',   // immeuble moyen
+        30, '#6b5038'    // tour — plus clair
       ],
       'fill-extrusion-height':  HEIGHT,
       'fill-extrusion-base':    BASE,
-      'fill-extrusion-opacity': 0.90,
+      'fill-extrusion-opacity': 1.0,
       'fill-extrusion-vertical-gradient': true
     }
   });
 
-  // Toit (plan horizontal légèrement plus clair)
+  // Toit — tuile sombre contrastante, bien visible
   hxMap.addLayer({
     id: 'hailand-buildings-roof',
     type: 'fill-extrusion',
     source: src, 'source-layer': sl,
-    filter: ['all', ['!=', ['get', 'hide_3d'], true], ['>', HEIGHT, 2]],
+    filter: ['all', ['!=', ['get', 'hide_3d'], true], ['>', HEIGHT, 1]],
     paint: {
-      'fill-extrusion-color': '#2e3d58',
-      'fill-extrusion-height': ['+', HEIGHT, 0.25],
+      'fill-extrusion-color': '#2a2218',
+      'fill-extrusion-height': ['+', HEIGHT, 0.3],
       'fill-extrusion-base':   HEIGHT,
-      'fill-extrusion-opacity': 0.65
+      'fill-extrusion-opacity': 1.0
+    }
+  });
+
+  // Façades éclairées (fenêtres allumées — teinte or chaude sur le devant)
+  hxMap.addLayer({
+    id: 'hailand-buildings-lit',
+    type: 'fill-extrusion',
+    source: src, 'source-layer': sl,
+    filter: ['!=', ['get', 'hide_3d'], true],
+    paint: {
+      'fill-extrusion-color': 'rgba(255,200,100,0.22)',
+      'fill-extrusion-height':  HEIGHT,
+      'fill-extrusion-base':    BASE,
+      'fill-extrusion-opacity': [
+        'interpolate',['linear'],['zoom'],
+        14, 0.0,
+        16, 0.6,
+        18, 0.9
+      ]
     }
   });
 }
@@ -4727,63 +4746,96 @@ function _ajouterCouchesRoutes(src, sl) {
   const MINOR_FILTER = ['in', ['get','class'], ['literal',['minor','residential','service','track','path']]];
   const DASH_FILTER  = ['in', ['get','class'], ['literal',['primary','secondary','trunk']]];
 
-  // Halo orangé (lampadaires)
+  // Halo orangé (lampadaires) — toutes routes
   hxMap.addLayer({
     id: 'hailand-roads-glow', type: 'line', source: src, 'source-layer': sl,
     filter: MAIN_FILTER,
     paint: {
-      'line-color': 'rgba(245,166,35,0.10)',
-      'line-width': ['interpolate',['linear'],['zoom'], 12,10, 16,22, 19,36],
-      'line-blur': 7
+      'line-color': 'rgba(245,166,35,0.18)',
+      'line-width': ['interpolate',['linear'],['zoom'], 12,14, 16,28, 19,44],
+      'line-blur': 8
     }
   }, 'hailand-buildings-3d');
 
-  // Route principale sombre
+  // Halo doux sur petites routes aussi
+  hxMap.addLayer({
+    id: 'hailand-roads-minor-glow', type: 'line', source: src, 'source-layer': sl,
+    filter: MINOR_FILTER,
+    paint: {
+      'line-color': 'rgba(245,150,20,0.10)',
+      'line-width': ['interpolate',['linear'],['zoom'], 13,6, 16,14, 19,24],
+      'line-blur': 5
+    }
+  }, 'hailand-buildings-3d');
+
+  // Route principale sombre — goudron
   hxMap.addLayer({
     id: 'hailand-roads-main', type: 'line', source: src, 'source-layer': sl,
     filter: MAIN_FILTER,
     paint: {
       'line-color': '#1c2235',
-      'line-width': ['interpolate',['linear'],['zoom'], 12,3, 16,11, 19,20]
+      'line-width': ['interpolate',['linear'],['zoom'], 12,4, 16,13, 19,22]
     }
   }, 'hailand-buildings-3d');
 
-  // Rues secondaires
+  // Rues secondaires — même couleur goudron, visible
   hxMap.addLayer({
     id: 'hailand-roads-minor', type: 'line', source: src, 'source-layer': sl,
     filter: MINOR_FILTER,
     paint: {
-      'line-color': '#161c2c',
-      'line-width': ['interpolate',['linear'],['zoom'], 13,1.5, 16,6, 19,12]
+      'line-color': '#1a2030',
+      'line-width': ['interpolate',['linear'],['zoom'], 13,2.5, 16,8, 19,14]
     }
   }, 'hailand-buildings-3d');
 
-  // ✦ Petits traits blancs espacés au centre des routes principales ✦
+  // ✦ Tirets blancs au centre — routes principales ✦
   hxMap.addLayer({
     id: 'hailand-roads-dash', type: 'line', source: src, 'source-layer': sl,
     filter: DASH_FILTER,
     paint: {
-      'line-color': 'rgba(255,255,255,0.52)',
-      'line-width': ['interpolate',['linear'],['zoom'], 13,0.8, 16,1.8, 19,3.5],
+      'line-color': 'rgba(255,255,255,0.55)',
+      'line-width': ['interpolate',['linear'],['zoom'], 13,0.9, 16,2.0, 19,3.8],
       'line-dasharray': [3, 5]
     }
   });
 
-  // Reflet orangé sur les bords de route
+  // ✦ Tirets blancs sur les petites routes aussi ✦
+  hxMap.addLayer({
+    id: 'hailand-roads-minor-dash', type: 'line', source: src, 'source-layer': sl,
+    filter: MINOR_FILTER,
+    paint: {
+      'line-color': 'rgba(255,255,255,0.28)',
+      'line-width': ['interpolate',['linear'],['zoom'], 14,0.5, 16,1.2, 19,2.2],
+      'line-dasharray': [2, 6]
+    }
+  });
+
+  // Reflet orangé bord de route — routes principales
   hxMap.addLayer({
     id: 'hailand-roads-edge', type: 'line', source: src, 'source-layer': sl,
     filter: MAIN_FILTER,
     paint: {
-      'line-color': 'rgba(245,166,35,0.16)',
-      'line-width': ['interpolate',['linear'],['zoom'], 13,0.8, 16,2.2],
-      'line-gap-width': ['interpolate',['linear'],['zoom'], 13,3, 16,11]
+      'line-color': 'rgba(245,166,35,0.22)',
+      'line-width': ['interpolate',['linear'],['zoom'], 13,0.8, 16,2.5],
+      'line-gap-width': ['interpolate',['linear'],['zoom'], 13,4, 16,13]
+    }
+  });
+
+  // Reflet orangé bord de route — petites routes
+  hxMap.addLayer({
+    id: 'hailand-roads-minor-edge', type: 'line', source: src, 'source-layer': sl,
+    filter: MINOR_FILTER,
+    paint: {
+      'line-color': 'rgba(245,166,35,0.12)',
+      'line-width': ['interpolate',['linear'],['zoom'], 14,0.5, 16,1.5],
+      'line-gap-width': ['interpolate',['linear'],['zoom'], 14,2.5, 16,8]
     }
   });
 }
 
 /* ─── Couches Végétation ─── */
 function _ajouterCouchesVegetation(src, sl) {
-  // Zones vertes depuis landuse/landcover
+  // Zones vertes — vert plus vif et visible comme dans la référence
   if(sl && !hxMap.getLayer('hailand-parks')) {
     hxMap.addLayer({
       id: 'hailand-parks', type: 'fill', source: src, 'source-layer': sl,
@@ -4791,20 +4843,20 @@ function _ajouterCouchesVegetation(src, sl) {
       paint: {
         'fill-color': [
           'match', ['get','class'],
-          'wood',    '#0c1e0e',
-          'forest',  '#0b1c0d',
-          'grass',   '#0e2010',
-          'park',    '#102412',
-          '#0a1a0c'
+          'wood',    '#1a3d1e',
+          'forest',  '#17381b',
+          'grass',   '#1e4422',
+          'park',    '#204826',
+          '#183a1c'
         ],
-        'fill-opacity': 0.82
+        'fill-opacity': 0.95
       }
     }, 'hailand-buildings-3d');
 
     hxMap.addLayer({
       id: 'hailand-parks-border', type: 'line', source: src, 'source-layer': sl,
       filter: ['in', ['get','class'], ['literal',['wood','forest','park']]],
-      paint: { 'line-color':'rgba(74,222,128,0.14)', 'line-width':0.8 }
+      paint: { 'line-color':'rgba(74,222,128,0.22)', 'line-width':1.0 }
     });
   }
 
@@ -4896,41 +4948,38 @@ function _ajouterCouchesEau(src, slWater, slWaterway) {
 
 /* ─── Lumières nocturnes ─── */
 function _ajouterLumieresNocturnes(src, slBuilding, slTransport) {
-  // Halos de lampadaires : cercles orangés le long des routes
+  // Halos de lampadaires : cercles orangés le long des routes — bien lumineux
   if(slTransport && !hxMap.getLayer('hailand-streetlights')) {
     try {
       hxMap.addLayer({
         id: 'hailand-streetlights', type: 'circle', source: src, 'source-layer': slTransport,
-        filter: ['in', ['get','class'], ['literal',['primary','secondary','trunk']]],
+        filter: ['in', ['get','class'], ['literal',['primary','secondary','trunk','minor','residential']]],
         paint: {
-          'circle-color': 'rgba(245,166,35,0.07)',
-          'circle-radius': ['interpolate',['linear'],['zoom'], 13,8, 16,22, 19,44],
-          'circle-blur': 0.85,
+          'circle-color': 'rgba(255,190,60,0.18)',
+          'circle-radius': ['interpolate',['linear'],['zoom'], 13,10, 16,26, 19,50],
+          'circle-blur': 0.80,
           'circle-pitch-alignment': 'map'
         }
       });
     } catch(e){}
   }
 
-  // Fenêtres éclairées sur les bâtiments (points jaunes semi-transparents)
+  // Fenêtres éclairées — tache or vive, bien visible
   if(slBuilding && !hxMap.getLayer('hailand-windows')) {
     try {
-      // On utilise la couche fill (2D) avec une couleur de fenêtres simulée
-      // car les fill-extrusion ne supportent pas les points internes
       hxMap.addLayer({
         id: 'hailand-windows', type: 'fill', source: src, 'source-layer': slBuilding,
         filter: ['any',
-          ['>', ['coalesce',['get','height'],['get','render_height'],0], 6],
-          ['>', ['coalesce',['get','building:levels'],0], 2]
+          ['>', ['coalesce',['get','height'],['get','render_height'],0], 3],
+          ['>', ['coalesce',['get','building:levels'],0], 1]
         ],
         paint: {
-          // Tache lumineuse jaune pâle simulant des fenêtres éclairées vues du dessus
-          'fill-color': 'rgba(255,228,100,0.06)',
+          'fill-color': 'rgba(255,220,100,0.20)',
           'fill-opacity': [
             'interpolate',['linear'],['zoom'],
-            14, 0.0,
-            16, 0.5,
-            18, 0.9
+            13, 0.2,
+            15, 0.6,
+            17, 1.0
           ]
         }
       });
@@ -4945,17 +4994,17 @@ function _ajouterLumieresNocturnes(src, slBuilding, slTransport) {
     hxMap.addLayer({
       id: 'hailand-lampadaires-glow', type: 'circle', source: 'hx-lampadaires',
       paint: {
-        'circle-color': 'rgba(255,200,80,0.15)',
-        'circle-radius': ['interpolate',['linear'],['zoom'], 14,8, 16,16, 18,30],
-        'circle-blur': 0.9
+        'circle-color': 'rgba(255,200,80,0.35)',
+        'circle-radius': ['interpolate',['linear'],['zoom'], 14,10, 16,22, 18,40],
+        'circle-blur': 0.85
       }
     });
     hxMap.addLayer({
       id: 'hailand-lampadaires', type: 'circle', source: 'hx-lampadaires',
       paint: {
-        'circle-color': '#FFCC44',
-        'circle-radius': ['interpolate',['linear'],['zoom'], 14,1, 16,2, 18,3],
-        'circle-opacity': 0.9
+        'circle-color': '#FFD060',
+        'circle-radius': ['interpolate',['linear'],['zoom'], 14,1.5, 16,2.5, 18,4],
+        'circle-opacity': 1.0
       }
     });
   }
@@ -4997,22 +5046,22 @@ function _genererLampadaires() {
 
 /* ─── Ambiance générale (brouillard + lumière directionnelle) ─── */
 function _configurerAmbiance() {
-  // Brouillard nocturne à l'horizon
+  // Brouillard nocturne à l'horizon — moins dense pour laisser voir
   try {
     hxMap.setFog({
-      range: [0.5, 10],
+      range: [1, 12],
       color: '#0d0f14',
-      'horizon-blend': 0.08
+      'horizon-blend': 0.05
     });
   } catch(e) {}
 
-  // Lumière chaude (lampadaires vus de haut)
+  // Lumière chaude puissante (lampadaires vus de haut) — bien éclairé comme sur la référence
   try {
     hxMap.setLight({
       anchor: 'viewport',
-      color: '#F5A623',
-      intensity: 0.38,
-      position: [1.5, 180, 80]
+      color: '#FFD080',
+      intensity: 0.75,
+      position: [1.2, 210, 60]
     });
   } catch(e) {}
 }
