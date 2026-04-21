@@ -23,12 +23,6 @@
 <link href="https://unpkg.com/maplibre-gl@4.1.0/dist/maplibre-gl.css" rel="stylesheet"/>
 <script src="https://unpkg.com/maplibre-gl@4.1.0/dist/maplibre-gl.js"></script>
 
-<!-- Threebox – inclut Three.js + GLTFLoader en interne, NE PAS importer Three.js séparément -->
-
-<script src="https://cdn.jsdelivr.net/npm/threebox-plugin@2.2.7/dist/threebox.min.js"></script>
-
-<link href="https://cdn.jsdelivr.net/npm/threebox-plugin@2.2.7/dist/threebox.css" rel="stylesheet"/>
-
 <!-- Fonts -->
 
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@700;800&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
@@ -4529,92 +4523,15 @@ async function finaliserVente() {
   }
 }
 
+
 // ════════════════════════════════════════════════════
+// HAILANDMAP VISION – Carte 3D Nocturne
+// MapLibre GL natif – optimisé mobile iOS/Android
+// Pas de Threebox, pas de Three.js séparé
+// Rendu 100% GPU via fill-extrusion + custom layers
 // ════════════════════════════════════════════════════
-// HAILANDMAP VISION – Univers 3D Nocturne
-// MapLibre GL + Threebox (modèles GLB Supabase)
-// Architecture : LOD, tile-culling, lazy-load, pool
-// Inspiré de Snapchat Map & Google Maps 3D
-// ════════════════════════════════════════════════════
 
-const SUPABASE_STORAGE = 'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets';
-
-// ── Catalogue d'assets par catégorie ──
-const ASSETS_3D = {
-  // Bâtiments résidentiels (suburban)
-  suburban: [
-    'hailand-assets-kenny_city_suburban/building-type-a.glb',
-    'hailand-assets-kenny_city_suburban/building-type-b.glb',
-    'hailand-assets-kenny_city_suburban/building-type-e.glb',
-    'hailand-assets-kenny_city_suburban/building-type-f.glb',
-    'hailand-assets-kenny_city_suburban/building-type-h.glb',
-    'hailand-assets-kenny_city_suburban/building-type-j.glb',
-    'hailand-assets-kenny_city_suburban/building-type-k.glb',
-    'hailand-assets-kenny_city_suburban/building-type-l.glb',
-    'hailand-assets-kenny_city_suburban/building-type-m.glb',
-    'hailand-assets-kenny_city_suburban/building-type-n.glb',
-    'hailand-assets-kenny_city_suburban/building-type-p.glb',
-    'hailand-assets-kenny_city_suburban/building-type-q.glb',
-    'hailand-assets-kenny_city_suburban/building-type-r.glb',
-    'hailand-assets-kenny_city_suburban/building-type-s.glb',
-    'hailand-assets-kenny_city_suburban/building-type-t.glb',
-    'hailand-assets-kenny_city_suburban/building-type-u.glb',
-  ],
-  // Bâtiments industriels
-  industrial: [
-    'hailand-assets-kenny_city_industrial/building-a.glb',
-    'hailand-assets-kenny_city_industrial/building-k.glb',
-    'hailand-assets-kenny_city_industrial/building-l.glb',
-    'hailand-assets-kenny_city_industrial/building-m.glb',
-    'hailand-assets-kenny_city_industrial/building-n.glb',
-    'hailand-assets-kenny_city_industrial/building-r.glb',
-    'hailand-assets-kenny_city_industrial/building-s.glb',
-  ],
-  // Immeubles / skyscrapers
-  skyscraper: [
-    'building-skyscraper-a.glb',
-    'building-skyscraper-b.glb',
-    'building-skyscraper-d.glb',
-    'building-skyscraper-e.glb',
-  ],
-  // Bâtiments génériques
-  generic: [
-    'building-a.glb','building-b.glb','building-c.glb','building-d.glb',
-    'building-e.glb','building-f.glb','building-g.glb','building-h.glb',
-    'building-i.glb','building-j.glb','building-k.glb','building-l.glb',
-    'building-m.glb',
-  ],
-  // Low-detail (loin)
-  low: [
-    'low-detail-building-a.glb','low-detail-building-b.glb',
-    'low-detail-building-d.glb','low-detail-building-e.glb',
-    'low-detail-building-g.glb','low-detail-building-h.glb',
-    'low-detail-building-k.glb','low-detail-building-l.glb',
-    'low-detail-building-m.glb','low-detail-building-n.glb',
-    'low-detail-building-wide-a.glb','low-detail-building-wide-b.glb',
-  ],
-  // Arbres
-  trees: [
-    'hailand-assets-kenny_city_suburban/tree-large.glb',
-    'hailand-assets-kenny_city_suburban/tree-small.glb',
-    'hailand-assets-kaykit_forest/Tree_1_A_Color1.gltf',
-    'hailand-assets-kaykit_forest/Tree_2_D_Color1.gltf',
-    'hailand-assets-kaykit_forest/Tree_4_A_Color1.gltf',
-  ],
-  // Lampadaires
-  streetlight: [
-    'hailand-assets-kaykit_city/streetlight.gltf',
-  ],
-};
-
-// URL complète d'un asset
-function assetUrl(path) {
-  return `${SUPABASE_STORAGE}/${path}`;
-}
-
-// ────────────────────────────────────────────────────
 let hxMap          = null;
-let tb             = null;   // instance Threebox
 let userMarker     = null;
 let mapWatchId     = null;
 let btqMarkers     = [];
@@ -4623,18 +4540,9 @@ let routeLine      = null;
 let mapInitialized = false;
 let mapCurrentMode = '3d';
 
-// Pool de modèles 3D déjà chargés (cache mémoire)
-const _modelCache  = new Map();   // url → THREE.Object3D clone-ready
-const _activeObjs  = new Map();   // featureId → tb object (pour cleanup)
-const _lampObjs    = [];          // objets lampadaires actifs
-
-// Tile de rendu actif (pour LOD/culling)
-let _renderTile = null;
-let _renderRAF  = null;
-let _lastZoom   = 15;
-
 const MAP_STYLE_DARK = 'https://tiles.basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 const MAP_STYLE_SAT  = 'https://tiles.basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
+const SUPABASE_URL_MAP = 'https://plisyaquijijmwbbuegy.supabase.co';
 
 /* ─── Ouvrir la carte ─── */
 async function ouvrirHailandMap() {
@@ -4646,8 +4554,7 @@ async function ouvrirHailandMap() {
     await _initMapLibre();
     mapInitialized = true;
   } else {
-    hxMap.resize();
-    if(tb) tb.map.resize();
+    hxMap?.resize();
   }
 
   if(navigator.geolocation) {
@@ -4664,7 +4571,7 @@ async function ouvrirHailandMap() {
   await verifierAdresseExistante();
 }
 
-/* ─── Init MapLibre + Threebox ─── */
+/* ─── Initialisation MapLibre GL ─── */
 function _initMapLibre() {
   return new Promise(resolve => {
     const container = document.getElementById('hailand-map-container');
@@ -4679,70 +4586,60 @@ function _initMapLibre() {
       bearing: -15,
       antialias: true,
       attributionControl: false,
-      // Performance : limiter les tuiles en mémoire
-      maxTileCacheSize: 50,
+      maxTileCacheSize: 40,        // limite mémoire tuiles
+      fadeDuration: 100,           // transitions rapides
     });
 
     hxMap.addControl(new maplibregl.NavigationControl({ showCompass:true, showZoom:true }), 'bottom-right');
 
-    hxMap.on('load', async () => {
-      // ── Détection de la source vectorielle ──
+    hxMap.on('load', () => {
+      // Détection source vectorielle
       const sources = hxMap.getStyle().sources;
       const srcName = Object.keys(sources).find(k =>
         sources[k].type === 'vector' &&
         (k === 'carto' || k === 'openmaptiles' || k.toLowerCase().includes('tile'))
       ) || 'carto';
 
-      const existingLayers = hxMap.getStyle().layers || [];
-      const availableSL = new Set(existingLayers.filter(l => l.source === srcName).map(l => l['source-layer']));
+      const layers = hxMap.getStyle().layers || [];
+      const availSL = new Set(layers.filter(l => l.source === srcName).map(l => l['source-layer']));
 
       const SL = {
-        building:  availableSL.has('building')      ? 'building'      : null,
-        transport: availableSL.has('transportation') ? 'transportation': availableSL.has('road') ? 'road' : null,
-        landuse:   availableSL.has('landuse')        ? 'landuse'       : availableSL.has('landcover') ? 'landcover' : null,
-        water:     availableSL.has('water')          ? 'water'         : null,
-        waterway:  availableSL.has('waterway')       ? 'waterway'      : null,
+        building:  availSL.has('building')       ? 'building'       : null,
+        transport: availSL.has('transportation')  ? 'transportation' : availSL.has('road') ? 'road' : null,
+        landuse:   availSL.has('landuse')         ? 'landuse'        : availSL.has('landcover') ? 'landcover' : null,
+        water:     availSL.has('water')           ? 'water'          : null,
+        waterway:  availSL.has('waterway')        ? 'waterway'       : null,
       };
 
       const HEIGHT = ['coalesce',['get','render_height'],['get','height'],['*',['to-number',['get','building:levels'],0],3],5];
       const BASE   = ['coalesce',['get','render_min_height'],['get','min_height'],0];
 
-      // ── Sol et couleurs de fond ──
+      // Fond sombre
       try {
-        hxMap.getStyle().layers.filter(l=>l.type==='background').forEach(l=>{
+        layers.filter(l=>l.type==='background').forEach(l=>{
           try{hxMap.setPaintProperty(l.id,'background-color','#0c1018');}catch(e){}
         });
-        hxMap.getStyle().layers.filter(l=>l['source-layer']==='landuse'||l['source-layer']==='landcover').forEach(l=>{
+        layers.filter(l=>l['source-layer']==='landuse'||l['source-layer']==='landcover').forEach(l=>{
           try{hxMap.setPaintProperty(l.id,'fill-color','#141a20');}catch(e){}
           try{hxMap.setPaintProperty(l.id,'fill-opacity',1);}catch(e){}
         });
-      } catch(e){}
+      }catch(e){}
 
-      // ── Couches vectorielles de base (routes, végétation, eau) ──
-      _ajouterCouchesRoutes(srcName, SL.transport);
-      _ajouterCouchesVegetation(srcName, SL.landuse);
-      _ajouterCouchesEau(srcName, SL.water, SL.waterway);
-
-      // ── Masquer les fill-extrusion du style de base ──
-      (hxMap.getStyle().layers||[]).forEach(l => {
-        const id = l.id||'';
-        if(l.type==='fill-extrusion' && !id.startsWith('hailand-') && id!=='building-shadow') {
-          try{hxMap.setLayoutProperty(id,'visibility','none');}catch(e){}
+      // Masquer fill-extrusion du style de base
+      layers.forEach(l=>{
+        if(l.type==='fill-extrusion'&&!(l.id||'').startsWith('hailand-')&&l.id!=='building-shadow'){
+          try{hxMap.setLayoutProperty(l.id,'visibility','none');}catch(e){}
         }
       });
 
-      // ── Fallback fill-extrusion bâtiments pour zoom < 15 (avant Threebox) ──
-      _ajouterCouchesBatimentsFallback(srcName, SL.building, HEIGHT, BASE);
-
-      // ── Initialiser Threebox ──
-      _initThreebox();
-
-      // ── Ambiance lumineuse ──
+      // Construire toutes les couches
+      _ajouterCouchesBatiments(srcName, SL.building, HEIGHT, BASE);
+      _ajouterCouchesRoutes(srcName, SL.transport);
+      _ajouterCouchesVegetation(srcName, SL.landuse);
+      _ajouterCouchesEau(srcName, SL.water, SL.waterway);
+      _ajouterLampadaires2D();
       _configurerAmbiance();
 
-      // ── Écouter les mouvements pour LOD dynamique ──
-      hxMap.on('moveend', _onMapMoveEnd);
-      hxMap.on('zoomend', _onMapMoveEnd);
       hxMap.on('move', () => {
         const z = document.getElementById('map-zoom-val');
         if(z) z.textContent = Math.round(hxMap.getZoom());
@@ -4759,425 +4656,142 @@ function _initMapLibre() {
   });
 }
 
-/* ─── Init Threebox ─── */
-function _initThreebox() {
-  if(!window.Threebox) { console.warn('[HailandMap] Threebox non disponible'); return; }
+/* ─── Bâtiments 3D (fill-extrusion natif MapLibre — 60fps sur mobile) ─── */
+function _ajouterCouchesBatiments(src, sl, HEIGHT, BASE) {
+  if(!sl || hxMap.getLayer('building-shadow')) return;
 
-  // Couche custom MapLibre qui héberge le canvas WebGL de Threebox
+  // 1. Ombre portée
   hxMap.addLayer({
-    id: 'hailand-3d-layer',
-    type: 'custom',
-    renderingMode: '3d',
-    onAdd(map, gl) {
-      tb = new Threebox(map, gl, {
-        defaultLights: false,      // on gère nos propres lumières
-        enableSelectingObjects: false,
-        enableDraggingObjects: false,
-        enableRotatingObjects: false,
-        enableTooltips: false,
-      });
-      _ajouterLumieresThreebox();
-      // Premier chargement différé (300ms) pour laisser la carte se stabiliser
-      setTimeout(_chargerObjets3DVisibles, 300);
-    },
-    render(gl, matrix) {
-      if(tb) tb.update();
-    }
-  });
-}
-
-/* ─── Éclairage Three.js ─── */
-function _ajouterLumieresThreebox() {
-  if(!tb) return;
-  // THREE est bundlé dans threebox et exposé sur window.THREE
-  const T = window.THREE;
-  if(!T) { console.warn('[HailandMap] THREE introuvable'); return; }
-
-  const ambient = new T.AmbientLight(0xFFE8C0, 0.45);
-  tb.scene.add(ambient);
-
-  const dirLight = new T.DirectionalLight(0xFFD580, 0.8);
-  dirLight.position.set(-1, 2, 1.5);
-  dirLight.castShadow = false;
-  tb.scene.add(dirLight);
-
-  const moonLight = new T.DirectionalLight(0x8090C0, 0.25);
-  moonLight.position.set(1, 3, -1);
-  tb.scene.add(moonLight);
-
-  const lampPositions = [
-    [-13.6795, 9.5300], [-13.6760, 9.5360], [-13.6720, 9.5405],
-    [-13.6670, 9.5445], [-13.6840, 9.5345], [-13.6590, 9.5500],
-    [-13.6740, 9.5430], [-13.6810, 9.5370],
-  ];
-  lampPositions.forEach(([lng, lat]) => {
-    const light = new T.PointLight(0xFFB040, 1.8, 200);
-    const coords = tb.projectToWorld([lng, lat, 8]);
-    light.position.copy(coords);
-    tb.scene.add(light);
-  });
-}
-
-/* ─── Charger les objets 3D visibles (LOD + culling) ─── */
-async function _chargerObjets3DVisibles() {
-  if(!tb || !hxMap) return;
-
-  const zoom = hxMap.getZoom();
-  _lastZoom = zoom;
-
-  // En dessous de zoom 14 → on utilise seulement les fill-extrusion
-  // (comme Google Maps qui ne charge les modèles qu'à fort zoom)
-  if(zoom < 14) {
-    _masquerTousObjets3D();
-    return;
-  }
-
-  // Obtenir les features bâtiments visibles dans le viewport
-  const buildingFeatures = hxMap.queryRenderedFeatures(
-    undefined, // tout le viewport
-    { layers: ['hailand-buildings-fallback'] }
-  ).slice(0, zoom >= 16 ? 60 : 25); // limite dure : 60 objets max pour fluidité
-
-  const currentIds = new Set();
-
-  for(const feat of buildingFeatures) {
-    const id = feat.id || feat.properties?.osm_id || JSON.stringify(feat.geometry.coordinates[0][0]);
-    if(_activeObjs.has(id)) { currentIds.add(id); continue; }
-
-    const geom = feat.geometry;
-    if(!geom || geom.type !== 'Polygon') continue;
-
-    const centroid = _polygonCentroid(geom.coordinates[0]);
-    if(!centroid) continue;
-
-    const height = feat.properties?.height || feat.properties?.render_height ||
-                   (feat.properties?.['building:levels']||0)*3 || 5;
-    const area   = _polygonArea(geom.coordinates[0]);
-
-    // Sélection du modèle selon taille et hauteur
-    const modelPath = _choisirModele(height, area);
-    const url = assetUrl(modelPath);
-
-    currentIds.add(id);
-
-    // Chargement asynchrone non-bloquant
-    _chargerEtPlacerModele(url, centroid, height, area, id).catch(()=>{});
-  }
-
-  // Supprimer les objets hors viewport
-  for(const [id, obj] of _activeObjs) {
-    if(!currentIds.has(id)) {
-      try { tb.remove(obj); } catch(e){}
-      _activeObjs.delete(id);
-    }
-  }
-
-  // Arbres sur zones vertes (zoom ≥ 15)
-  if(zoom >= 15) {
-    _chargerArbresVisibles();
-  }
-
-  // Lampadaires (zoom ≥ 15)
-  if(zoom >= 15 && _lampObjs.length === 0) {
-    _chargerLampadaires3D();
-  }
-}
-
-/* ─── Charger et placer un modèle GLB ─── */
-async function _chargerEtPlacerModele(url, lngLat, heightM, areaM2, featureId) {
-  if(!tb) return;
-
-  let obj;
-  if(_modelCache.has(url)) {
-    // Clone depuis le cache → zéro réseau, quasi-instantané
-    obj = tb.clone(_modelCache.get(url));
-  } else {
-    // Chargement réseau (une seule fois par URL)
-    obj = await new Promise((resolve, reject) => {
-      tb.loadObj({
-        type: 'gltf',
-        obj: url,
-        units: 'meters',
-        scale: 1,
-        rotation: { x: 90, y: 0, z: 0 },
-        anchor: 'bottom',
-      }, (loaded) => {
-        if(loaded) { _modelCache.set(url, loaded); resolve(tb.clone(loaded)); }
-        else reject(new Error('load failed'));
-      });
-    });
-  }
-
-  if(!obj) return;
-
-  // Ajuster l'échelle au footprint réel du polygone
-  const scale = _calculerEchelle(obj, heightM, areaM2);
-  obj.setScale({ x: scale.x, y: scale.y, z: scale.z });
-  obj.setCoords([lngLat[0], lngLat[1], 0]);
-
-  // Rotation aléatoire parmi 4 orientations (évite le clonage uniforme)
-  obj.setRotation({ x: 0, y: 0, z: [0, 90, 180, 270][Math.floor(Math.random()*4)] });
-
-  // Lumière de fenêtre : PointLight orange dans le bâtiment
-  const T = window.THREE;
-  if(T) {
-    const winLight = new T.PointLight(0xFFD080, 0.6, 30);
-    winLight.position.set(0, heightM * 0.4, 0);
-    obj.add(winLight);
-  }
-
-  tb.add(obj);
-  _activeObjs.set(featureId, obj);
-}
-
-/* ─── Arbres 3D sur zones vertes ─── */
-async function _chargerArbresVisibles() {
-  if(!tb) return;
-  const parkFeatures = hxMap.queryRenderedFeatures(undefined, { layers: ['hailand-parks'] }).slice(0, 12);
-  for(const feat of parkFeatures) {
-    if(feat.geometry.type !== 'Polygon') continue;
-    const centroid = _polygonCentroid(feat.geometry.coordinates[0]);
-    if(!centroid) continue;
-    const treeUrl = assetUrl(ASSETS_3D.trees[Math.floor(Math.random()*3)]);
-    await _chargerEtPlacerArbre(treeUrl, centroid, feat.id||Math.random()).catch(()=>{});
-  }
-}
-
-async function _chargerEtPlacerArbre(url, lngLat, id) {
-  if(!tb || _activeObjs.has('tree_'+id)) return;
-  let obj;
-  if(_modelCache.has(url)) {
-    obj = tb.clone(_modelCache.get(url));
-  } else {
-    obj = await new Promise((resolve, reject) => {
-      tb.loadObj({ type:'gltf', obj:url, units:'meters', scale:1, rotation:{x:90,y:0,z:0}, anchor:'bottom' },
-        (loaded) => { if(loaded){ _modelCache.set(url,loaded); resolve(tb.clone(loaded)); } else reject(); });
-    });
-  }
-  if(!obj) return;
-  obj.setScale({ x:3, y:3, z:3 });
-  obj.setCoords([lngLat[0], lngLat[1], 0]);
-  tb.add(obj);
-  _activeObjs.set('tree_'+id, obj);
-}
-
-/* ─── Lampadaires 3D le long des rues ─── */
-async function _chargerLampadaires3D() {
-  if(!tb || _lampObjs.length > 0) return;
-  const url = assetUrl(ASSETS_3D.streetlight[0]);
-
-  const axes = [
-    [[-13.6795,9.5290],[-13.6780,9.5320],[-13.6760,9.5360]],
-    [[-13.6720,9.5400],[-13.6695,9.5420],[-13.6668,9.5445]],
-    [[-13.6870,9.5330],[-13.6845,9.5345],[-13.6820,9.5360]],
-    [[-13.6640,9.5460],[-13.6620,9.5478],[-13.6600,9.5495]],
-  ];
-
-  // Pré-charger le modèle une fois
-  let baseModel = null;
-  try {
-    baseModel = await new Promise((resolve, reject) => {
-      tb.loadObj({ type:'gltf', obj:url, units:'meters', scale:1, rotation:{x:90,y:0,z:0}, anchor:'bottom' },
-        (loaded) => { if(loaded) resolve(loaded); else reject(); });
-    });
-    _modelCache.set(url, baseModel);
-  } catch(e) { return; }
-
-  // Placer les lampadaires tous les ~50m
-  for(const axe of axes) {
-    for(let i=0; i<axe.length-1; i++) {
-      const [x1,y1]=axe[i], [x2,y2]=axe[i+1];
-      const steps = Math.ceil(Math.hypot(x2-x1,y2-y1)/0.0004);
-      for(let s=0; s<=steps; s++) {
-        const t = s/steps;
-        const offset = 0.00008 * (s%2===0 ? 1 : -1);
-        const lng = x1+(x2-x1)*t+offset;
-        const lat = y1+(y2-y1)*t+offset;
-        const lamp = tb.clone(baseModel);
-        lamp.setScale({x:2,y:2,z:2});
-        lamp.setCoords([lng, lat, 0]);
-
-        // Halo lumineux orangé au sommet du lampadaire
-        const T = window.THREE;
-        if(T) {
-          const glow = new T.PointLight(0xFFB040, 1.5, 80);
-          glow.position.set(0, 5, 0);
-          lamp.add(glow);
-        }
-
-        tb.add(lamp);
-        _lampObjs.push(lamp);
-        if(_lampObjs.length > 40) return; // max 40 lampadaires visibles
-      }
-    }
-  }
-}
-
-/* ─── Masquer tous les objets 3D (zoom faible) ─── */
-function _masquerTousObjets3D() {
-  if(!tb) return;
-  for(const obj of _activeObjs.values()) {
-    try { tb.remove(obj); } catch(e){}
-  }
-  _activeObjs.clear();
-  for(const lamp of _lampObjs) {
-    try { tb.remove(lamp); } catch(e){}
-  }
-  _lampObjs.length = 0;
-}
-
-/* ─── Callback zoom/move → recharger les objets visibles ─── */
-function _onMapMoveEnd() {
-  // Debounce via RAF pour ne pas surcharger
-  if(_renderRAF) cancelAnimationFrame(_renderRAF);
-  _renderRAF = requestAnimationFrame(() => {
-    _chargerObjets3DVisibles().catch(()=>{});
-  });
-}
-
-/* ─── Helpers géométriques ─── */
-function _polygonCentroid(ring) {
-  if(!ring || ring.length < 3) return null;
-  let x=0, y=0;
-  ring.forEach(([lng,lat]) => { x+=lng; y+=lat; });
-  return [x/ring.length, y/ring.length];
-}
-
-function _polygonArea(ring) {
-  if(!ring || ring.length < 3) return 100;
-  let a=0;
-  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
-    a += (ring[j][0]+ring[i][0])*(ring[j][1]-ring[i][1]);
-  }
-  return Math.abs(a/2) * 111319 * 111319;
-}
-
-function _choisirModele(heightM, areaM2) {
-  const h = heightM || 5;
-  const a = areaM2 || 100;
-  if(h > 30 || a > 2000)   return ASSETS_3D.skyscraper[Math.floor(Math.random()*ASSETS_3D.skyscraper.length)];
-  if(h > 15 || a > 800)    return ASSETS_3D.generic[Math.floor(Math.random()*ASSETS_3D.generic.length)];
-  if(h > 8  || a > 300)    return ASSETS_3D.industrial[Math.floor(Math.random()*ASSETS_3D.industrial.length)];
-  return ASSETS_3D.suburban[Math.floor(Math.random()*ASSETS_3D.suburban.length)];
-}
-
-function _calculerEchelle(obj, heightM, areaM2) {
-  const T = window.THREE;
-  if(!T) return { x:1, y:1, z:1 };
-  const box = new T.Box3().setFromObject(obj.model || obj);
-  const size = new T.Vector3();
-  box.getSize(size);
-  const modelH = size.y || 1;
-  const modelW = Math.max(size.x, size.z) || 1;
-
-  const targetH = Math.max(heightM || 5, 3);
-  const targetW = Math.max(Math.sqrt(areaM2 || 100), 5);
-
-  const scaleH = targetH / modelH;
-  const scaleW = targetW / modelW;
-  const s = Math.min(scaleH, scaleW * 1.5); // ne pas écraser la hauteur
-
-  return { x: s, y: s, z: s };
-}
-
-/* ─── Fallback fill-extrusion bâtiments (visible à tout zoom) ─── */
-function _ajouterCouchesBatimentsFallback(src, sl, HEIGHT, BASE) {
-  if(!sl) return;
-  if(hxMap.getLayer('building-shadow')) return;
-
-  hxMap.addLayer({
-    id: 'building-shadow', type:'fill-extrusion', source:src, 'source-layer':sl,
+    id: 'building-shadow', type:'fill-extrusion',
+    source:src, 'source-layer':sl,
     filter:['!=',['get','hide_3d'],true],
     paint:{
       'fill-extrusion-color':'#020408',
-      'fill-extrusion-height':HEIGHT,'fill-extrusion-base':0,
-      'fill-extrusion-opacity':0.6,'fill-extrusion-translate':[3,4]
+      'fill-extrusion-height':HEIGHT,
+      'fill-extrusion-base':0,
+      'fill-extrusion-opacity':0.55,
+      'fill-extrusion-translate':[3,4]
     }
   });
 
+  // 2. Murs — couleur brun-or guinéen, gradient vertical
   hxMap.addLayer({
-    id:'hailand-buildings-fallback', type:'fill-extrusion', source:src, 'source-layer':sl,
+    id:'hailand-buildings-3d', type:'fill-extrusion',
+    source:src, 'source-layer':sl,
     filter:['!=',['get','hide_3d'],true],
     paint:{
       'fill-extrusion-color':[
         'interpolate',['linear'],HEIGHT,
-        0,'#3d2e18',4,'#4e3a20',8,'#5a4228',15,'#634a2e',30,'#705438'
+        0,'#3d2e18', 4,'#4e3a20', 8,'#5a4228',
+        15,'#634a2e', 30,'#705438', 60,'#7a6040'
       ],
-      'fill-extrusion-height':HEIGHT,'fill-extrusion-base':BASE,
-      'fill-extrusion-opacity':[
-        // À fort zoom (≥16), on rend presque invisible au profit des GLB Threebox
-        'interpolate',['linear'],['zoom'],
-        13,1.0, 15,0.85, 16.5,0.30, 17.5,0.0
-      ],
+      'fill-extrusion-height':HEIGHT,
+      'fill-extrusion-base':BASE,
+      'fill-extrusion-opacity':1.0,
       'fill-extrusion-vertical-gradient':true
     }
   });
 
+  // 3. Toits
   hxMap.addLayer({
-    id:'hailand-buildings-roof', type:'fill-extrusion', source:src, 'source-layer':sl,
+    id:'hailand-buildings-roof', type:'fill-extrusion',
+    source:src, 'source-layer':sl,
     filter:['all',['!=',['get','hide_3d'],true],['>', HEIGHT, 1]],
     paint:{
       'fill-extrusion-color':['interpolate',['linear'],HEIGHT,0,'#1e1a14',10,'#252018',25,'#2e2820'],
-      'fill-extrusion-height':['+',HEIGHT,0.5],'fill-extrusion-base':HEIGHT,
-      'fill-extrusion-opacity':[
-        'interpolate',['linear'],['zoom'],
-        13,1.0,16,0.4,17.5,0.0
-      ]
+      'fill-extrusion-height':['+',HEIGHT,0.4],
+      'fill-extrusion-base':HEIGHT,
+      'fill-extrusion-opacity':1.0
     }
   });
 
-  // Lueur fenêtres sur les murs (2D fill)
-  if(!hxMap.getLayer('hailand-windows-2d')) {
-    hxMap.addLayer({
-      id:'hailand-windows-2d', type:'fill', source:src, 'source-layer':sl,
-      filter:['!=',['get','hide_3d'],true],
-      paint:{
-        'fill-color':'rgba(255,210,100,1)',
-        'fill-opacity':['interpolate',['linear'],['zoom'],14,0.0,16,0.07,18,0.15]
-      }
-    });
-  }
+  // 4. Lueur fenêtres (fill 2D semi-transparent sur emprises)
+  hxMap.addLayer({
+    id:'hailand-windows', type:'fill',
+    source:src, 'source-layer':sl,
+    filter:['!=',['get','hide_3d'],true],
+    paint:{
+      'fill-color':'#FFD580',
+      'fill-opacity':['interpolate',['linear'],['zoom'],13,0,15,0.05,17,0.14,19,0.22]
+    }
+  });
 }
 
-/* ─── Couches Routes ─── */
+/* ─── Routes ─── */
 function _ajouterCouchesRoutes(src, sl) {
   if(!sl || hxMap.getLayer('hailand-roads-glow')) return;
 
   const MAIN  = ['in',['get','class'],['literal',['primary','secondary','trunk','motorway']]];
   const MINOR = ['in',['get','class'],['literal',['minor','residential','service','track','path']]];
 
-  // Goudron + halo éclairage
-  hxMap.addLayer({ id:'hailand-roads-glow', type:'line', source:src, 'source-layer':sl, filter:MAIN,
-    paint:{'line-color':'rgba(245,166,35,0.22)','line-width':18,'line-blur':10} });
-  hxMap.addLayer({ id:'hailand-roads-main', type:'line', source:src, 'source-layer':sl, filter:MAIN,
-    paint:{'line-color':'#1c2235','line-width':10} });
-  hxMap.addLayer({ id:'hailand-roads-edge', type:'line', source:src, 'source-layer':sl, filter:MAIN,
-    paint:{'line-color':'rgba(245,166,35,0.30)','line-width':1.5,'line-gap-width':10} });
-  hxMap.addLayer({ id:'hailand-roads-dash', type:'line', source:src, 'source-layer':sl, filter:MAIN,
-    paint:{'line-color':'rgba(255,255,255,0.55)','line-width':1.4,'line-dasharray':[4,6]} });
+  hxMap.addLayer({id:'hailand-roads-glow', type:'line', source:src,'source-layer':sl,filter:MAIN,
+    paint:{'line-color':'rgba(245,166,35,0.20)','line-width':16,'line-blur':10}});
+  hxMap.addLayer({id:'hailand-roads-main', type:'line', source:src,'source-layer':sl,filter:MAIN,
+    paint:{'line-color':'#1c2235','line-width':9}});
+  hxMap.addLayer({id:'hailand-roads-edge', type:'line', source:src,'source-layer':sl,filter:MAIN,
+    paint:{'line-color':'rgba(245,166,35,0.28)','line-width':1.5,'line-gap-width':9}});
+  hxMap.addLayer({id:'hailand-roads-dash', type:'line', source:src,'source-layer':sl,filter:MAIN,
+    paint:{'line-color':'rgba(255,255,255,0.50)','line-width':1.2,'line-dasharray':[4,6]}});
 
-  hxMap.addLayer({ id:'hailand-roads-minor-glow', type:'line', source:src, 'source-layer':sl, filter:MINOR,
-    paint:{'line-color':'rgba(220,140,20,0.14)','line-width':10,'line-blur':6} });
-  hxMap.addLayer({ id:'hailand-roads-minor', type:'line', source:src, 'source-layer':sl, filter:MINOR,
-    paint:{'line-color':'#181e2e','line-width':6} });
-  hxMap.addLayer({ id:'hailand-roads-minor-edge', type:'line', source:src, 'source-layer':sl, filter:MINOR,
-    paint:{'line-color':'rgba(220,140,20,0.20)','line-width':1.0,'line-gap-width':6} });
-  hxMap.addLayer({ id:'hailand-roads-minor-dash', type:'line', source:src, 'source-layer':sl, filter:MINOR,
-    paint:{'line-color':'rgba(255,255,255,0.30)','line-width':0.8,'line-dasharray':[3,8]} });
+  hxMap.addLayer({id:'hailand-roads-minor-glow', type:'line', source:src,'source-layer':sl,filter:MINOR,
+    paint:{'line-color':'rgba(220,140,20,0.12)','line-width':8,'line-blur':5}});
+  hxMap.addLayer({id:'hailand-roads-minor', type:'line', source:src,'source-layer':sl,filter:MINOR,
+    paint:{'line-color':'#181e2e','line-width':5}});
+  hxMap.addLayer({id:'hailand-roads-minor-edge', type:'line', source:src,'source-layer':sl,filter:MINOR,
+    paint:{'line-color':'rgba(220,140,20,0.18)','line-width':0.8,'line-gap-width':5}});
+}
 
-  // Lampadaires GeoJSON (halos 2D sur la carte pour les zooms faibles)
-  if(!hxMap.getSource('hx-lampadaires')) {
-    const lampadaires = _genererLampadaires();
-    hxMap.addSource('hx-lampadaires', { type:'geojson', data:{ type:'FeatureCollection', features:lampadaires } });
-    hxMap.addLayer({ id:'hailand-lampadaires-halo', type:'circle', source:'hx-lampadaires',
-      paint:{'circle-color':'rgba(255,195,60,0.28)','circle-radius':14,'circle-blur':0.88,'circle-pitch-alignment':'map'} });
-    hxMap.addLayer({ id:'hailand-lampadaires-point', type:'circle', source:'hx-lampadaires',
-      paint:{'circle-color':'#FFE060','circle-radius':2,'circle-opacity':1.0,'circle-pitch-alignment':'map'} });
+/* ─── Végétation ─── */
+function _ajouterCouchesVegetation(src, sl) {
+  if(!sl || hxMap.getLayer('hailand-parks')) return;
+
+  hxMap.addLayer({
+    id:'hailand-parks', type:'fill', source:src,'source-layer':sl,
+    filter:['in',['get','class'],['literal',['wood','forest','grass','meadow','park','scrub','wetland','recreation_ground']]],
+    paint:{
+      'fill-color':['match',['get','class'],'wood','#1c3d1e','forest','#193a1b','grass','#224422','park','#234825','#1a3c1c'],
+      'fill-opacity':1.0
+    }
+  });
+
+  // Canopée simulée (légère surimpression plus claire)
+  hxMap.addLayer({
+    id:'hailand-tree-canopy', type:'fill', source:src,'source-layer':sl,
+    filter:['in',['get','class'],['literal',['wood','forest','park']]],
+    paint:{
+      'fill-color':'#2a5c2e',
+      'fill-opacity':['interpolate',['linear'],['zoom'],12,0.4,17,0.75],
+      'fill-translate':[0,-1]
+    }
+  });
+
+  hxMap.addLayer({
+    id:'hailand-parks-border', type:'line', source:src,'source-layer':sl,
+    filter:['in',['get','class'],['literal',['wood','forest','park']]],
+    paint:{'line-color':'rgba(90,210,100,0.25)','line-width':1.0}
+  });
+}
+
+/* ─── Eau ─── */
+function _ajouterCouchesEau(src, slW, slWW) {
+  hxMap.getStyle().layers.filter(l=>l.type==='fill'&&((l['source-layer']==='water')||(l.id||'').includes('water'))).forEach(l=>{
+    try{hxMap.setPaintProperty(l.id,'fill-color','#05080f');}catch(e){}
+    try{hxMap.setPaintProperty(l.id,'fill-opacity',0.95);}catch(e){}
+  });
+  if(slW && !hxMap.getLayer('hailand-water-glow')){
+    try{hxMap.addLayer({id:'hailand-water-glow',type:'line',source:src,'source-layer':slW,
+      paint:{'line-color':'rgba(96,165,250,0.20)','line-width':1.5,'line-blur':2}});}catch(e){}
+  }
+  if(slWW && !hxMap.getLayer('hailand-waterway-glow')){
+    try{hxMap.addLayer({id:'hailand-waterway-glow',type:'line',source:src,'source-layer':slWW,
+      paint:{'line-color':'rgba(96,165,250,0.16)','line-width':['interpolate',['linear'],['zoom'],10,1,14,3,17,7],'line-blur':1.5}});}catch(e){}
   }
 }
 
-/* ─── Générer points lampadaires ─── */
-function _genererLampadaires() {
+/* ─── Lampadaires 2D (GeoJSON circles — zéro overhead) ─── */
+function _ajouterLampadaires2D() {
+  if(hxMap.getSource('hx-lampadaires')) return;
+
   const axes = [
     [[-13.6795,9.5290],[-13.6780,9.5320],[-13.6760,9.5360],[-13.6745,9.5395]],
     [[-13.6720,9.5400],[-13.6695,9.5420],[-13.6668,9.5445]],
@@ -5191,62 +4805,23 @@ function _genererLampadaires() {
       const steps=Math.ceil(Math.hypot(x2-x1,y2-y1)/0.0004);
       for(let s=0;s<=steps;s++){
         const t=s/steps;
-        const offset=0.00008*(Math.random()>.5?1:-1);
-        features.push({ type:'Feature', geometry:{type:'Point',coordinates:[x1+(x2-x1)*t+offset,y1+(y2-y1)*t+offset]}, properties:{} });
+        const off=0.00008*(s%2===0?1:-1);
+        features.push({type:'Feature',geometry:{type:'Point',coordinates:[x1+(x2-x1)*t+off,y1+(y2-y1)*t+off]},properties:{}});
       }
     }
   });
-  return features;
+
+  hxMap.addSource('hx-lampadaires',{type:'geojson',data:{type:'FeatureCollection',features}});
+  hxMap.addLayer({id:'hailand-lamp-halo',type:'circle',source:'hx-lampadaires',
+    paint:{'circle-color':'rgba(255,195,60,0.25)','circle-radius':13,'circle-blur':0.9,'circle-pitch-alignment':'map'}});
+  hxMap.addLayer({id:'hailand-lamp-core',type:'circle',source:'hx-lampadaires',
+    paint:{'circle-color':'#FFE060','circle-radius':2.2,'circle-opacity':0.95,'circle-pitch-alignment':'map'}});
 }
 
-/* ─── Couches Végétation ─── */
-function _ajouterCouchesVegetation(src, sl) {
-  if(!sl || hxMap.getLayer('hailand-parks')) return;
-
-  hxMap.addLayer({
-    id:'hailand-parks', type:'fill', source:src, 'source-layer':sl,
-    filter:['in',['get','class'],['literal',['wood','forest','grass','meadow','park','scrub','wetland','recreation_ground']]],
-    paint:{
-      'fill-color':['match',['get','class'],'wood','#1c3d1e','forest','#193a1b','grass','#224422','park','#234825','#1a3c1c'],
-      'fill-opacity':1.0
-    }
-  });
-  hxMap.addLayer({
-    id:'hailand-tree-canopy', type:'fill', source:src, 'source-layer':sl,
-    filter:['in',['get','class'],['literal',['wood','forest','park']]],
-    paint:{ 'fill-color':'#2a5c2e', 'fill-opacity':['interpolate',['linear'],['zoom'],12,0.5,16,0.8], 'fill-translate':[0,-1] }
-  });
-  hxMap.addLayer({
-    id:'hailand-parks-border', type:'line', source:src, 'source-layer':sl,
-    filter:['in',['get','class'],['literal',['wood','forest','park']]],
-    paint:{ 'line-color':'rgba(90,210,100,0.30)', 'line-width':1.2 }
-  });
-}
-
-/* ─── Couches Eau ─── */
-function _ajouterCouchesEau(src, slWater, slWaterway) {
-  hxMap.getStyle().layers.filter(l=>l.type==='fill'&&(l['source-layer']==='water'||(l.id||'').includes('water'))).forEach(l=>{
-    try{hxMap.setPaintProperty(l.id,'fill-color','#05080f');}catch(e){}
-    try{hxMap.setPaintProperty(l.id,'fill-opacity',0.95);}catch(e){}
-  });
-  if(slWater && !hxMap.getLayer('hailand-water-glow')) {
-    try{ hxMap.addLayer({ id:'hailand-water-glow', type:'line', source:src, 'source-layer':slWater,
-      paint:{'line-color':'rgba(96,165,250,0.22)','line-width':1.5,'line-blur':2} }); }catch(e){}
-  }
-  if(slWaterway && !hxMap.getLayer('hailand-waterway-glow')) {
-    try{ hxMap.addLayer({ id:'hailand-waterway-glow', type:'line', source:src, 'source-layer':slWaterway,
-      paint:{'line-color':'rgba(96,165,250,0.18)','line-width':['interpolate',['linear'],['zoom'],10,1,14,3,17,8],'line-blur':1.5} }); }catch(e){}
-  }
-}
-
-/* ─── Ambiance générale ─── */
+/* ─── Ambiance ─── */
 function _configurerAmbiance() {
-  try {
-    hxMap.setLight({ anchor:'viewport', color:'#FFE8A0', intensity:0.55, position:[1.5,225,45] });
-  } catch(e){}
-  try {
-    hxMap.setFog({ range:[2,18], color:'#080c14', 'horizon-blend':0.04 });
-  } catch(e){}
+  try{hxMap.setLight({anchor:'viewport',color:'#FFE8A0',intensity:0.60,position:[1.5,225,45]});}catch(e){}
+  try{hxMap.setFog({range:[2,18],color:'#080c14','horizon-blend':0.04});}catch(e){}
 }
 
 /* ─── Modes carte (2D / 3D / Satellite) ─── */
