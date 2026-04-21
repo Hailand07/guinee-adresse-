@@ -23,11 +23,11 @@
 <link href="https://unpkg.com/maplibre-gl@4.1.0/dist/maplibre-gl.css" rel="stylesheet"/>
 <script src="https://unpkg.com/maplibre-gl@4.1.0/dist/maplibre-gl.js"></script>
 
-<!-- HailandMap Vision – Threebox (objets GLB 3D sur MapLibre) -->
+<!-- Threebox – inclut Three.js + GLTFLoader en interne, NE PAS importer Three.js séparément -->
 
 <script src="https://cdn.jsdelivr.net/npm/threebox-plugin@2.2.7/dist/threebox.min.js"></script>
 
-<link  href="https://cdn.jsdelivr.net/npm/threebox-plugin@2.2.7/dist/threebox.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/threebox-plugin@2.2.7/dist/threebox.css" rel="stylesheet"/>
 
 <!-- Fonts -->
 
@@ -2494,8 +2494,6 @@ async function afficherClient() {
         </div>
         <div style="display:flex;gap:7px;align-items:center">
           <div id="locked-address-display" class="locked-address-chip hidden">🔒 <span id="locked-address-text">OK</span></div>
-          <button id="btn-toggle-3d" class="map-mode-btn active" onclick="toggle3DScene()"
-                  style="font-size:.7rem;padding:7px 10px">🏙️ 3D ON</button>
           <button class="btn-lock-zone" onclick="initierVerrouillage()" id="btn-lock-zone">🏠</button>
           <button class="btn btn-sm btn-round" onclick="centrerSurMoi()"
                   style="background:rgba(96,165,250,.15);border:1px solid rgba(96,165,250,.3);color:#60A5FA;padding:8px 12px">📍</button>
@@ -4532,18 +4530,109 @@ async function finaliserVente() {
 }
 
 // ════════════════════════════════════════════════════
-// HAILANDMAP VISION – Carte 3D Nocturne (MapLibre GL)
 // ════════════════════════════════════════════════════
-let hxMap          = null;   // instance MapLibre
-let userMarker     = null;   // marqueur DOM position client
-let mapWatchId     = null;   // watchPosition GPS carte
-let btqMarkers     = [];     // marqueurs boutiquiers (DOM)
-let livreurMarkers = [];     // marqueurs livreurs
-let routeLine      = null;   // source itinéraire actif
-let mapInitialized = false;
-let mapCurrentMode = '3d';   // '2d' | '3d' | 'satellite'
+// HAILANDMAP VISION – Univers 3D Nocturne
+// MapLibre GL + Threebox (modèles GLB Supabase)
+// Architecture : LOD, tile-culling, lazy-load, pool
+// Inspiré de Snapchat Map & Google Maps 3D
+// ════════════════════════════════════════════════════
 
-/* ── Style MapLibre CartoCDN Dark Matter (tuiles vectorielles) ── */
+const SUPABASE_STORAGE = 'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets';
+
+// ── Catalogue d'assets par catégorie ──
+const ASSETS_3D = {
+  // Bâtiments résidentiels (suburban)
+  suburban: [
+    'hailand-assets-kenny_city_suburban/building-type-a.glb',
+    'hailand-assets-kenny_city_suburban/building-type-b.glb',
+    'hailand-assets-kenny_city_suburban/building-type-e.glb',
+    'hailand-assets-kenny_city_suburban/building-type-f.glb',
+    'hailand-assets-kenny_city_suburban/building-type-h.glb',
+    'hailand-assets-kenny_city_suburban/building-type-j.glb',
+    'hailand-assets-kenny_city_suburban/building-type-k.glb',
+    'hailand-assets-kenny_city_suburban/building-type-l.glb',
+    'hailand-assets-kenny_city_suburban/building-type-m.glb',
+    'hailand-assets-kenny_city_suburban/building-type-n.glb',
+    'hailand-assets-kenny_city_suburban/building-type-p.glb',
+    'hailand-assets-kenny_city_suburban/building-type-q.glb',
+    'hailand-assets-kenny_city_suburban/building-type-r.glb',
+    'hailand-assets-kenny_city_suburban/building-type-s.glb',
+    'hailand-assets-kenny_city_suburban/building-type-t.glb',
+    'hailand-assets-kenny_city_suburban/building-type-u.glb',
+  ],
+  // Bâtiments industriels
+  industrial: [
+    'hailand-assets-kenny_city_industrial/building-a.glb',
+    'hailand-assets-kenny_city_industrial/building-k.glb',
+    'hailand-assets-kenny_city_industrial/building-l.glb',
+    'hailand-assets-kenny_city_industrial/building-m.glb',
+    'hailand-assets-kenny_city_industrial/building-n.glb',
+    'hailand-assets-kenny_city_industrial/building-r.glb',
+    'hailand-assets-kenny_city_industrial/building-s.glb',
+  ],
+  // Immeubles / skyscrapers
+  skyscraper: [
+    'building-skyscraper-a.glb',
+    'building-skyscraper-b.glb',
+    'building-skyscraper-d.glb',
+    'building-skyscraper-e.glb',
+  ],
+  // Bâtiments génériques
+  generic: [
+    'building-a.glb','building-b.glb','building-c.glb','building-d.glb',
+    'building-e.glb','building-f.glb','building-g.glb','building-h.glb',
+    'building-i.glb','building-j.glb','building-k.glb','building-l.glb',
+    'building-m.glb',
+  ],
+  // Low-detail (loin)
+  low: [
+    'low-detail-building-a.glb','low-detail-building-b.glb',
+    'low-detail-building-d.glb','low-detail-building-e.glb',
+    'low-detail-building-g.glb','low-detail-building-h.glb',
+    'low-detail-building-k.glb','low-detail-building-l.glb',
+    'low-detail-building-m.glb','low-detail-building-n.glb',
+    'low-detail-building-wide-a.glb','low-detail-building-wide-b.glb',
+  ],
+  // Arbres
+  trees: [
+    'hailand-assets-kenny_city_suburban/tree-large.glb',
+    'hailand-assets-kenny_city_suburban/tree-small.glb',
+    'hailand-assets-kaykit_forest/Tree_1_A_Color1.gltf',
+    'hailand-assets-kaykit_forest/Tree_2_D_Color1.gltf',
+    'hailand-assets-kaykit_forest/Tree_4_A_Color1.gltf',
+  ],
+  // Lampadaires
+  streetlight: [
+    'hailand-assets-kaykit_city/streetlight.gltf',
+  ],
+};
+
+// URL complète d'un asset
+function assetUrl(path) {
+  return `${SUPABASE_STORAGE}/${path}`;
+}
+
+// ────────────────────────────────────────────────────
+let hxMap          = null;
+let tb             = null;   // instance Threebox
+let userMarker     = null;
+let mapWatchId     = null;
+let btqMarkers     = [];
+let livreurMarkers = [];
+let routeLine      = null;
+let mapInitialized = false;
+let mapCurrentMode = '3d';
+
+// Pool de modèles 3D déjà chargés (cache mémoire)
+const _modelCache  = new Map();   // url → THREE.Object3D clone-ready
+const _activeObjs  = new Map();   // featureId → tb object (pour cleanup)
+const _lampObjs    = [];          // objets lampadaires actifs
+
+// Tile de rendu actif (pour LOD/culling)
+let _renderTile = null;
+let _renderRAF  = null;
+let _lastZoom   = 15;
+
 const MAP_STYLE_DARK = 'https://tiles.basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 const MAP_STYLE_SAT  = 'https://tiles.basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
 
@@ -4558,9 +4647,9 @@ async function ouvrirHailandMap() {
     mapInitialized = true;
   } else {
     hxMap.resize();
+    if(tb) tb.map.resize();
   }
 
-  // Démarrer le GPS dédié carte
   if(navigator.geolocation) {
     mapWatchId = navigator.geolocation.watchPosition(
       pos => actualiserPositionClient(pos.coords.latitude, pos.coords.longitude),
@@ -4569,15 +4658,13 @@ async function ouvrirHailandMap() {
     );
   }
 
-  // Horloge nocturne
   _demarrerHorloge();
-
   await chargerBoutiquiersHailandX();
   await chargerStatsCarte();
   await verifierAdresseExistante();
 }
 
-/* ─── Initialisation MapLibre GL ─── */
+/* ─── Init MapLibre + Threebox ─── */
 function _initMapLibre() {
   return new Promise(resolve => {
     const container = document.getElementById('hailand-map-container');
@@ -4586,1029 +4673,1069 @@ function _initMapLibre() {
     hxMap = new maplibregl.Map({
       container: 'hailand-map-container',
       style: MAP_STYLE_DARK,
-      center: [-13.677, 9.537],  // Conakry
+      center: [-13.677, 9.537],
       zoom: 15,
-      pitch: 65,
+      pitch: 60,
       bearing: -15,
       antialias: true,
-      attributionControl: false
+      attributionControl: false,
+      // Performance : limiter les tuiles en mémoire
+      maxTileCacheSize: 50,
     });
 
-    hxMap.addControl(
-      new maplibregl.NavigationControl({ showCompass:true, showZoom:true }),
-      'bottom-right'
-    );
+    hxMap.addControl(new maplibregl.NavigationControl({ showCompass:true, showZoom:true }), 'bottom-right');
 
-    hxMap.on('load', () => {
-      // ── Détecter dynamiquement le nom réel de la source vectorielle ──
-      // CartoCDN Dark Matter utilise "carto", certains forks "openmaptiles"
+    hxMap.on('load', async () => {
+      // ── Détection de la source vectorielle ──
       const sources = hxMap.getStyle().sources;
       const srcName = Object.keys(sources).find(k =>
         sources[k].type === 'vector' &&
         (k === 'carto' || k === 'openmaptiles' || k.toLowerCase().includes('tile'))
       ) || 'carto';
 
-      console.log('[HailandMap] Source vectorielle détectée :', srcName);
-
-      // Détecter les source-layers disponibles dans cette source
-      // en parcourant les couches existantes du style
       const existingLayers = hxMap.getStyle().layers || [];
-      const availableSourceLayers = new Set(
-        existingLayers.filter(l => l.source === srcName).map(l => l['source-layer'])
-      );
-      console.log('[HailandMap] Source-layers disponibles :', [...availableSourceLayers]);
+      const availableSL = new Set(existingLayers.filter(l => l.source === srcName).map(l => l['source-layer']));
 
-      // Choisir le bon nom de source-layer selon ce qui est disponible
       const SL = {
-        building:       availableSourceLayers.has('building')       ? 'building'       : null,
-        transport:      availableSourceLayers.has('transportation')  ? 'transportation' :
-                        availableSourceLayers.has('road')            ? 'road'            : null,
-        landuse:        availableSourceLayers.has('landuse')         ? 'landuse'         :
-                        availableSourceLayers.has('landcover')       ? 'landcover'       : null,
-        water:          availableSourceLayers.has('water')           ? 'water'           : null,
-        waterway:       availableSourceLayers.has('waterway')        ? 'waterway'        : null,
+        building:  availableSL.has('building')      ? 'building'      : null,
+        transport: availableSL.has('transportation') ? 'transportation': availableSL.has('road') ? 'road' : null,
+        landuse:   availableSL.has('landuse')        ? 'landuse'       : availableSL.has('landcover') ? 'landcover' : null,
+        water:     availableSL.has('water')          ? 'water'         : null,
+        waterway:  availableSL.has('waterway')       ? 'waterway'      : null,
       };
 
-      // Détecter la bonne propriété de hauteur dans les tuiles
-      // CartoCDN expose "render_height" uniquement dans certains plans payants
-      // La propriété standard OSM-Buildings est "height" (en mètres)
-      // On utilise une expression qui prend la première valeur non-nulle
-      const HEIGHT_EXPR = [
-        'coalesce',
-        ['get', 'render_height'],
-        ['get', 'height'],
-        ['*', ['to-number', ['get', 'building:levels'], 0], 3],
-        5   // hauteur par défaut 5m si aucune donnée
-      ];
-      const BASE_EXPR = [
-        'coalesce',
-        ['get', 'render_min_height'],
-        ['get', 'min_height'],
-        0
-      ];
+      const HEIGHT = ['coalesce',['get','render_height'],['get','height'],['*',['to-number',['get','building:levels'],0],3],5];
+      const BASE   = ['coalesce',['get','render_min_height'],['get','min_height'],0];
 
-      _ajouterCouchesBatiments(srcName, SL.building, HEIGHT_EXPR, BASE_EXPR);
+      // ── Sol et couleurs de fond ──
+      try {
+        hxMap.getStyle().layers.filter(l=>l.type==='background').forEach(l=>{
+          try{hxMap.setPaintProperty(l.id,'background-color','#0c1018');}catch(e){}
+        });
+        hxMap.getStyle().layers.filter(l=>l['source-layer']==='landuse'||l['source-layer']==='landcover').forEach(l=>{
+          try{hxMap.setPaintProperty(l.id,'fill-color','#141a20');}catch(e){}
+          try{hxMap.setPaintProperty(l.id,'fill-opacity',1);}catch(e){}
+        });
+      } catch(e){}
+
+      // ── Couches vectorielles de base (routes, végétation, eau) ──
       _ajouterCouchesRoutes(srcName, SL.transport);
       _ajouterCouchesVegetation(srcName, SL.landuse);
       _ajouterCouchesEau(srcName, SL.water, SL.waterway);
-      _ajouterLumieresNocturnes(srcName, SL.building, SL.transport);
+
+      // ── Masquer les fill-extrusion du style de base ──
+      (hxMap.getStyle().layers||[]).forEach(l => {
+        const id = l.id||'';
+        if(l.type==='fill-extrusion' && !id.startsWith('hailand-') && id!=='building-shadow') {
+          try{hxMap.setLayoutProperty(id,'visibility','none');}catch(e){}
+        }
+      });
+
+      // ── Fallback fill-extrusion bâtiments pour zoom < 15 (avant Threebox) ──
+      _ajouterCouchesBatimentsFallback(srcName, SL.building, HEIGHT, BASE);
+
+      // ── Initialiser Threebox ──
+      _initThreebox();
+
+      // ── Ambiance lumineuse ──
       _configurerAmbiance();
 
-      // ── Démarrer le moteur Threebox (objets 3D GLB) ──
-      _demarrerThreebox();
+      // ── Écouter les mouvements pour LOD dynamique ──
+      hxMap.on('moveend', _onMapMoveEnd);
+      hxMap.on('zoomend', _onMapMoveEnd);
+      hxMap.on('move', () => {
+        const z = document.getElementById('map-zoom-val');
+        if(z) z.textContent = Math.round(hxMap.getZoom());
+      });
+      hxMap.on('pitch', () => {
+        const p = document.getElementById('map-pitch-val');
+        if(p) p.textContent = Math.round(hxMap.getPitch())+'°';
+      });
 
       resolve();
     });
 
-    hxMap.on('error', e => console.warn('[HailandMap] Erreur couche:', e.error?.message));
-
-    hxMap.on('move', () => {
-      const z = document.getElementById('map-zoom-val');
-      if(z) z.textContent = Math.round(hxMap.getZoom());
-    });
-    hxMap.on('pitch', () => {
-      const p = document.getElementById('map-pitch-val');
-      if(p) p.textContent = Math.round(hxMap.getPitch()) + '°';
-    });
+    hxMap.on('error', e => console.warn('[HailandMap]', e.error?.message));
   });
 }
 
-/* ─── Couches Bâtiments 3D ─── */
-function _ajouterCouchesBatiments(src, sl, HEIGHT, BASE) {
-  if(!sl) { console.warn('[HailandMap] source-layer building absent'); return; }
+/* ─── Init Threebox ─── */
+function _initThreebox() {
+  if(!window.Threebox) { console.warn('[HailandMap] Threebox non disponible'); return; }
+
+  // Couche custom MapLibre qui héberge le canvas WebGL de Threebox
+  hxMap.addLayer({
+    id: 'hailand-3d-layer',
+    type: 'custom',
+    renderingMode: '3d',
+    onAdd(map, gl) {
+      tb = new Threebox(map, gl, {
+        defaultLights: false,      // on gère nos propres lumières
+        enableSelectingObjects: false,
+        enableDraggingObjects: false,
+        enableRotatingObjects: false,
+        enableTooltips: false,
+      });
+      _ajouterLumieresThreebox();
+      // Premier chargement différé (300ms) pour laisser la carte se stabiliser
+      setTimeout(_chargerObjets3DVisibles, 300);
+    },
+    render(gl, matrix) {
+      if(tb) tb.update();
+    }
+  });
+}
+
+/* ─── Éclairage Three.js ─── */
+function _ajouterLumieresThreebox() {
+  if(!tb) return;
+  // THREE est bundlé dans threebox et exposé sur window.THREE
+  const T = window.THREE;
+  if(!T) { console.warn('[HailandMap] THREE introuvable'); return; }
+
+  const ambient = new T.AmbientLight(0xFFE8C0, 0.45);
+  tb.scene.add(ambient);
+
+  const dirLight = new T.DirectionalLight(0xFFD580, 0.8);
+  dirLight.position.set(-1, 2, 1.5);
+  dirLight.castShadow = false;
+  tb.scene.add(dirLight);
+
+  const moonLight = new T.DirectionalLight(0x8090C0, 0.25);
+  moonLight.position.set(1, 3, -1);
+  tb.scene.add(moonLight);
+
+  const lampPositions = [
+    [-13.6795, 9.5300], [-13.6760, 9.5360], [-13.6720, 9.5405],
+    [-13.6670, 9.5445], [-13.6840, 9.5345], [-13.6590, 9.5500],
+    [-13.6740, 9.5430], [-13.6810, 9.5370],
+  ];
+  lampPositions.forEach(([lng, lat]) => {
+    const light = new T.PointLight(0xFFB040, 1.8, 200);
+    const coords = tb.projectToWorld([lng, lat, 8]);
+    light.position.copy(coords);
+    tb.scene.add(light);
+  });
+}
+
+/* ─── Charger les objets 3D visibles (LOD + culling) ─── */
+async function _chargerObjets3DVisibles() {
+  if(!tb || !hxMap) return;
+
+  const zoom = hxMap.getZoom();
+  _lastZoom = zoom;
+
+  // En dessous de zoom 14 → on utilise seulement les fill-extrusion
+  // (comme Google Maps qui ne charge les modèles qu'à fort zoom)
+  if(zoom < 14) {
+    _masquerTousObjets3D();
+    return;
+  }
+
+  // Obtenir les features bâtiments visibles dans le viewport
+  const buildingFeatures = hxMap.queryRenderedFeatures(
+    undefined, // tout le viewport
+    { layers: ['hailand-buildings-fallback'] }
+  ).slice(0, zoom >= 16 ? 60 : 25); // limite dure : 60 objets max pour fluidité
+
+  const currentIds = new Set();
+
+  for(const feat of buildingFeatures) {
+    const id = feat.id || feat.properties?.osm_id || JSON.stringify(feat.geometry.coordinates[0][0]);
+    if(_activeObjs.has(id)) { currentIds.add(id); continue; }
+
+    const geom = feat.geometry;
+    if(!geom || geom.type !== 'Polygon') continue;
+
+    const centroid = _polygonCentroid(geom.coordinates[0]);
+    if(!centroid) continue;
+
+    const height = feat.properties?.height || feat.properties?.render_height ||
+                   (feat.properties?.['building:levels']||0)*3 || 5;
+    const area   = _polygonArea(geom.coordinates[0]);
+
+    // Sélection du modèle selon taille et hauteur
+    const modelPath = _choisirModele(height, area);
+    const url = assetUrl(modelPath);
+
+    currentIds.add(id);
+
+    // Chargement asynchrone non-bloquant
+    _chargerEtPlacerModele(url, centroid, height, area, id).catch(()=>{});
+  }
+
+  // Supprimer les objets hors viewport
+  for(const [id, obj] of _activeObjs) {
+    if(!currentIds.has(id)) {
+      try { tb.remove(obj); } catch(e){}
+      _activeObjs.delete(id);
+    }
+  }
+
+  // Arbres sur zones vertes (zoom ≥ 15)
+  if(zoom >= 15) {
+    _chargerArbresVisibles();
+  }
+
+  // Lampadaires (zoom ≥ 15)
+  if(zoom >= 15 && _lampObjs.length === 0) {
+    _chargerLampadaires3D();
+  }
+}
+
+/* ─── Charger et placer un modèle GLB ─── */
+async function _chargerEtPlacerModele(url, lngLat, heightM, areaM2, featureId) {
+  if(!tb) return;
+
+  let obj;
+  if(_modelCache.has(url)) {
+    // Clone depuis le cache → zéro réseau, quasi-instantané
+    obj = tb.clone(_modelCache.get(url));
+  } else {
+    // Chargement réseau (une seule fois par URL)
+    obj = await new Promise((resolve, reject) => {
+      tb.loadObj({
+        type: 'gltf',
+        obj: url,
+        units: 'meters',
+        scale: 1,
+        rotation: { x: 90, y: 0, z: 0 },
+        anchor: 'bottom',
+      }, (loaded) => {
+        if(loaded) { _modelCache.set(url, loaded); resolve(tb.clone(loaded)); }
+        else reject(new Error('load failed'));
+      });
+    });
+  }
+
+  if(!obj) return;
+
+  // Ajuster l'échelle au footprint réel du polygone
+  const scale = _calculerEchelle(obj, heightM, areaM2);
+  obj.setScale({ x: scale.x, y: scale.y, z: scale.z });
+  obj.setCoords([lngLat[0], lngLat[1], 0]);
+
+  // Rotation aléatoire parmi 4 orientations (évite le clonage uniforme)
+  obj.setRotation({ x: 0, y: 0, z: [0, 90, 180, 270][Math.floor(Math.random()*4)] });
+
+  // Lumière de fenêtre : PointLight orange dans le bâtiment
+  const T = window.THREE;
+  if(T) {
+    const winLight = new T.PointLight(0xFFD080, 0.6, 30);
+    winLight.position.set(0, heightM * 0.4, 0);
+    obj.add(winLight);
+  }
+
+  tb.add(obj);
+  _activeObjs.set(featureId, obj);
+}
+
+/* ─── Arbres 3D sur zones vertes ─── */
+async function _chargerArbresVisibles() {
+  if(!tb) return;
+  const parkFeatures = hxMap.queryRenderedFeatures(undefined, { layers: ['hailand-parks'] }).slice(0, 12);
+  for(const feat of parkFeatures) {
+    if(feat.geometry.type !== 'Polygon') continue;
+    const centroid = _polygonCentroid(feat.geometry.coordinates[0]);
+    if(!centroid) continue;
+    const treeUrl = assetUrl(ASSETS_3D.trees[Math.floor(Math.random()*3)]);
+    await _chargerEtPlacerArbre(treeUrl, centroid, feat.id||Math.random()).catch(()=>{});
+  }
+}
+
+async function _chargerEtPlacerArbre(url, lngLat, id) {
+  if(!tb || _activeObjs.has('tree_'+id)) return;
+  let obj;
+  if(_modelCache.has(url)) {
+    obj = tb.clone(_modelCache.get(url));
+  } else {
+    obj = await new Promise((resolve, reject) => {
+      tb.loadObj({ type:'gltf', obj:url, units:'meters', scale:1, rotation:{x:90,y:0,z:0}, anchor:'bottom' },
+        (loaded) => { if(loaded){ _modelCache.set(url,loaded); resolve(tb.clone(loaded)); } else reject(); });
+    });
+  }
+  if(!obj) return;
+  obj.setScale({ x:3, y:3, z:3 });
+  obj.setCoords([lngLat[0], lngLat[1], 0]);
+  tb.add(obj);
+  _activeObjs.set('tree_'+id, obj);
+}
+
+/* ─── Lampadaires 3D le long des rues ─── */
+async function _chargerLampadaires3D() {
+  if(!tb || _lampObjs.length > 0) return;
+  const url = assetUrl(ASSETS_3D.streetlight[0]);
+
+  const axes = [
+    [[-13.6795,9.5290],[-13.6780,9.5320],[-13.6760,9.5360]],
+    [[-13.6720,9.5400],[-13.6695,9.5420],[-13.6668,9.5445]],
+    [[-13.6870,9.5330],[-13.6845,9.5345],[-13.6820,9.5360]],
+    [[-13.6640,9.5460],[-13.6620,9.5478],[-13.6600,9.5495]],
+  ];
+
+  // Pré-charger le modèle une fois
+  let baseModel = null;
+  try {
+    baseModel = await new Promise((resolve, reject) => {
+      tb.loadObj({ type:'gltf', obj:url, units:'meters', scale:1, rotation:{x:90,y:0,z:0}, anchor:'bottom' },
+        (loaded) => { if(loaded) resolve(loaded); else reject(); });
+    });
+    _modelCache.set(url, baseModel);
+  } catch(e) { return; }
+
+  // Placer les lampadaires tous les ~50m
+  for(const axe of axes) {
+    for(let i=0; i<axe.length-1; i++) {
+      const [x1,y1]=axe[i], [x2,y2]=axe[i+1];
+      const steps = Math.ceil(Math.hypot(x2-x1,y2-y1)/0.0004);
+      for(let s=0; s<=steps; s++) {
+        const t = s/steps;
+        const offset = 0.00008 * (s%2===0 ? 1 : -1);
+        const lng = x1+(x2-x1)*t+offset;
+        const lat = y1+(y2-y1)*t+offset;
+        const lamp = tb.clone(baseModel);
+        lamp.setScale({x:2,y:2,z:2});
+        lamp.setCoords([lng, lat, 0]);
+
+        // Halo lumineux orangé au sommet du lampadaire
+        const T = window.THREE;
+        if(T) {
+          const glow = new T.PointLight(0xFFB040, 1.5, 80);
+          glow.position.set(0, 5, 0);
+          lamp.add(glow);
+        }
+
+        tb.add(lamp);
+        _lampObjs.push(lamp);
+        if(_lampObjs.length > 40) return; // max 40 lampadaires visibles
+      }
+    }
+  }
+}
+
+/* ─── Masquer tous les objets 3D (zoom faible) ─── */
+function _masquerTousObjets3D() {
+  if(!tb) return;
+  for(const obj of _activeObjs.values()) {
+    try { tb.remove(obj); } catch(e){}
+  }
+  _activeObjs.clear();
+  for(const lamp of _lampObjs) {
+    try { tb.remove(lamp); } catch(e){}
+  }
+  _lampObjs.length = 0;
+}
+
+/* ─── Callback zoom/move → recharger les objets visibles ─── */
+function _onMapMoveEnd() {
+  // Debounce via RAF pour ne pas surcharger
+  if(_renderRAF) cancelAnimationFrame(_renderRAF);
+  _renderRAF = requestAnimationFrame(() => {
+    _chargerObjets3DVisibles().catch(()=>{});
+  });
+}
+
+/* ─── Helpers géométriques ─── */
+function _polygonCentroid(ring) {
+  if(!ring || ring.length < 3) return null;
+  let x=0, y=0;
+  ring.forEach(([lng,lat]) => { x+=lng; y+=lat; });
+  return [x/ring.length, y/ring.length];
+}
+
+function _polygonArea(ring) {
+  if(!ring || ring.length < 3) return 100;
+  let a=0;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    a += (ring[j][0]+ring[i][0])*(ring[j][1]-ring[i][1]);
+  }
+  return Math.abs(a/2) * 111319 * 111319;
+}
+
+function _choisirModele(heightM, areaM2) {
+  const h = heightM || 5;
+  const a = areaM2 || 100;
+  if(h > 30 || a > 2000)   return ASSETS_3D.skyscraper[Math.floor(Math.random()*ASSETS_3D.skyscraper.length)];
+  if(h > 15 || a > 800)    return ASSETS_3D.generic[Math.floor(Math.random()*ASSETS_3D.generic.length)];
+  if(h > 8  || a > 300)    return ASSETS_3D.industrial[Math.floor(Math.random()*ASSETS_3D.industrial.length)];
+  return ASSETS_3D.suburban[Math.floor(Math.random()*ASSETS_3D.suburban.length)];
+}
+
+function _calculerEchelle(obj, heightM, areaM2) {
+  const T = window.THREE;
+  if(!T) return { x:1, y:1, z:1 };
+  const box = new T.Box3().setFromObject(obj.model || obj);
+  const size = new T.Vector3();
+  box.getSize(size);
+  const modelH = size.y || 1;
+  const modelW = Math.max(size.x, size.z) || 1;
+
+  const targetH = Math.max(heightM || 5, 3);
+  const targetW = Math.max(Math.sqrt(areaM2 || 100), 5);
+
+  const scaleH = targetH / modelH;
+  const scaleW = targetW / modelW;
+  const s = Math.min(scaleH, scaleW * 1.5); // ne pas écraser la hauteur
+
+  return { x: s, y: s, z: s };
+}
+
+/* ─── Fallback fill-extrusion bâtiments (visible à tout zoom) ─── */
+function _ajouterCouchesBatimentsFallback(src, sl, HEIGHT, BASE) {
+  if(!sl) return;
   if(hxMap.getLayer('building-shadow')) return;
 
-  // Ombre au sol décalée
   hxMap.addLayer({
-    id: 'building-shadow',
-    type: 'fill-extrusion',
-    source: src, 'source-layer': sl,
-    filter: ['!=', ['get', 'hide_3d'], true],
-    paint: {
-      'fill-extrusion-color': '#05080f',
-      'fill-extrusion-height': ['+', HEIGHT, 1],
-      'fill-extrusion-base': 0,
-      'fill-extrusion-opacity': 0.55,
-      'fill-extrusion-translate': [3, 4]
+    id: 'building-shadow', type:'fill-extrusion', source:src, 'source-layer':sl,
+    filter:['!=',['get','hide_3d'],true],
+    paint:{
+      'fill-extrusion-color':'#020408',
+      'fill-extrusion-height':HEIGHT,'fill-extrusion-base':0,
+      'fill-extrusion-opacity':0.6,'fill-extrusion-translate':[3,4]
     }
   });
 
-  // Corps principal — dégradé bleu nuit selon la hauteur
   hxMap.addLayer({
-    id: 'hailand-buildings-3d',
-    type: 'fill-extrusion',
-    source: src, 'source-layer': sl,
-    filter: ['!=', ['get', 'hide_3d'], true],
-    paint: {
-      'fill-extrusion-color': [
-        'interpolate', ['linear'], HEIGHT,
-        0,  '#14182a',
-        4,  '#1a2035',
-        10, '#202840',
-        20, '#26304d',
-        40, '#2d3a60'
+    id:'hailand-buildings-fallback', type:'fill-extrusion', source:src, 'source-layer':sl,
+    filter:['!=',['get','hide_3d'],true],
+    paint:{
+      'fill-extrusion-color':[
+        'interpolate',['linear'],HEIGHT,
+        0,'#3d2e18',4,'#4e3a20',8,'#5a4228',15,'#634a2e',30,'#705438'
       ],
-      'fill-extrusion-height':  HEIGHT,
-      'fill-extrusion-base':    BASE,
-      'fill-extrusion-opacity': 0.90,
-      'fill-extrusion-vertical-gradient': true
+      'fill-extrusion-height':HEIGHT,'fill-extrusion-base':BASE,
+      'fill-extrusion-opacity':[
+        // À fort zoom (≥16), on rend presque invisible au profit des GLB Threebox
+        'interpolate',['linear'],['zoom'],
+        13,1.0, 15,0.85, 16.5,0.30, 17.5,0.0
+      ],
+      'fill-extrusion-vertical-gradient':true
     }
   });
 
-  // Toit (plan horizontal légèrement plus clair)
   hxMap.addLayer({
-    id: 'hailand-buildings-roof',
-    type: 'fill-extrusion',
-    source: src, 'source-layer': sl,
-    filter: ['all', ['!=', ['get', 'hide_3d'], true], ['>', HEIGHT, 2]],
-    paint: {
-      'fill-extrusion-color': '#2e3d58',
-      'fill-extrusion-height': ['+', HEIGHT, 0.25],
-      'fill-extrusion-base':   HEIGHT,
-      'fill-extrusion-opacity': 0.65
+    id:'hailand-buildings-roof', type:'fill-extrusion', source:src, 'source-layer':sl,
+    filter:['all',['!=',['get','hide_3d'],true],['>', HEIGHT, 1]],
+    paint:{
+      'fill-extrusion-color':['interpolate',['linear'],HEIGHT,0,'#1e1a14',10,'#252018',25,'#2e2820'],
+      'fill-extrusion-height':['+',HEIGHT,0.5],'fill-extrusion-base':HEIGHT,
+      'fill-extrusion-opacity':[
+        'interpolate',['linear'],['zoom'],
+        13,1.0,16,0.4,17.5,0.0
+      ]
     }
   });
+
+  // Lueur fenêtres sur les murs (2D fill)
+  if(!hxMap.getLayer('hailand-windows-2d')) {
+    hxMap.addLayer({
+      id:'hailand-windows-2d', type:'fill', source:src, 'source-layer':sl,
+      filter:['!=',['get','hide_3d'],true],
+      paint:{
+        'fill-color':'rgba(255,210,100,1)',
+        'fill-opacity':['interpolate',['linear'],['zoom'],14,0.0,16,0.07,18,0.15]
+      }
+    });
+  }
 }
 
 /* ─── Couches Routes ─── */
 function _ajouterCouchesRoutes(src, sl) {
-  if(!sl) { console.warn('[HailandMap] source-layer transport absent'); return; }
-  if(hxMap.getLayer('hailand-roads-glow')) return;
+  if(!sl || hxMap.getLayer('hailand-roads-glow')) return;
 
-  const MAIN_FILTER  = ['in', ['get','class'], ['literal',['primary','secondary','trunk','motorway']]];
-  const MINOR_FILTER = ['in', ['get','class'], ['literal',['minor','residential','service','track','path']]];
-  const DASH_FILTER  = ['in', ['get','class'], ['literal',['primary','secondary','trunk']]];
+  const MAIN  = ['in',['get','class'],['literal',['primary','secondary','trunk','motorway']]];
+  const MINOR = ['in',['get','class'],['literal',['minor','residential','service','track','path']]];
 
-  // Halo orangé (lampadaires)
-  hxMap.addLayer({
-    id: 'hailand-roads-glow', type: 'line', source: src, 'source-layer': sl,
-    filter: MAIN_FILTER,
-    paint: {
-      'line-color': 'rgba(245,166,35,0.10)',
-      'line-width': ['interpolate',['linear'],['zoom'], 12,10, 16,22, 19,36],
-      'line-blur': 7
-    }
-  }, 'hailand-buildings-3d');
+  // Goudron + halo éclairage
+  hxMap.addLayer({ id:'hailand-roads-glow', type:'line', source:src, 'source-layer':sl, filter:MAIN,
+    paint:{'line-color':'rgba(245,166,35,0.22)','line-width':18,'line-blur':10} });
+  hxMap.addLayer({ id:'hailand-roads-main', type:'line', source:src, 'source-layer':sl, filter:MAIN,
+    paint:{'line-color':'#1c2235','line-width':10} });
+  hxMap.addLayer({ id:'hailand-roads-edge', type:'line', source:src, 'source-layer':sl, filter:MAIN,
+    paint:{'line-color':'rgba(245,166,35,0.30)','line-width':1.5,'line-gap-width':10} });
+  hxMap.addLayer({ id:'hailand-roads-dash', type:'line', source:src, 'source-layer':sl, filter:MAIN,
+    paint:{'line-color':'rgba(255,255,255,0.55)','line-width':1.4,'line-dasharray':[4,6]} });
 
-  // Route principale sombre
-  hxMap.addLayer({
-    id: 'hailand-roads-main', type: 'line', source: src, 'source-layer': sl,
-    filter: MAIN_FILTER,
-    paint: {
-      'line-color': '#1c2235',
-      'line-width': ['interpolate',['linear'],['zoom'], 12,3, 16,11, 19,20]
-    }
-  }, 'hailand-buildings-3d');
+  hxMap.addLayer({ id:'hailand-roads-minor-glow', type:'line', source:src, 'source-layer':sl, filter:MINOR,
+    paint:{'line-color':'rgba(220,140,20,0.14)','line-width':10,'line-blur':6} });
+  hxMap.addLayer({ id:'hailand-roads-minor', type:'line', source:src, 'source-layer':sl, filter:MINOR,
+    paint:{'line-color':'#181e2e','line-width':6} });
+  hxMap.addLayer({ id:'hailand-roads-minor-edge', type:'line', source:src, 'source-layer':sl, filter:MINOR,
+    paint:{'line-color':'rgba(220,140,20,0.20)','line-width':1.0,'line-gap-width':6} });
+  hxMap.addLayer({ id:'hailand-roads-minor-dash', type:'line', source:src, 'source-layer':sl, filter:MINOR,
+    paint:{'line-color':'rgba(255,255,255,0.30)','line-width':0.8,'line-dasharray':[3,8]} });
 
-  // Rues secondaires
-  hxMap.addLayer({
-    id: 'hailand-roads-minor', type: 'line', source: src, 'source-layer': sl,
-    filter: MINOR_FILTER,
-    paint: {
-      'line-color': '#161c2c',
-      'line-width': ['interpolate',['linear'],['zoom'], 13,1.5, 16,6, 19,12]
-    }
-  }, 'hailand-buildings-3d');
-
-  // ✦ Petits traits blancs espacés au centre des routes principales ✦
-  hxMap.addLayer({
-    id: 'hailand-roads-dash', type: 'line', source: src, 'source-layer': sl,
-    filter: DASH_FILTER,
-    paint: {
-      'line-color': 'rgba(255,255,255,0.52)',
-      'line-width': ['interpolate',['linear'],['zoom'], 13,0.8, 16,1.8, 19,3.5],
-      'line-dasharray': [3, 5]
-    }
-  });
-
-  // Reflet orangé sur les bords de route
-  hxMap.addLayer({
-    id: 'hailand-roads-edge', type: 'line', source: src, 'source-layer': sl,
-    filter: MAIN_FILTER,
-    paint: {
-      'line-color': 'rgba(245,166,35,0.16)',
-      'line-width': ['interpolate',['linear'],['zoom'], 13,0.8, 16,2.2],
-      'line-gap-width': ['interpolate',['linear'],['zoom'], 13,3, 16,11]
-    }
-  });
-}
-
-/* ─── Couches Végétation ─── */
-function _ajouterCouchesVegetation(src, sl) {
-  // Zones vertes depuis landuse/landcover
-  if(sl && !hxMap.getLayer('hailand-parks')) {
-    hxMap.addLayer({
-      id: 'hailand-parks', type: 'fill', source: src, 'source-layer': sl,
-      filter: ['in', ['get','class'], ['literal',['wood','forest','grass','meadow','park','scrub','wetland','recreation_ground']]],
-      paint: {
-        'fill-color': [
-          'match', ['get','class'],
-          'wood',    '#0c1e0e',
-          'forest',  '#0b1c0d',
-          'grass',   '#0e2010',
-          'park',    '#102412',
-          '#0a1a0c'
-        ],
-        'fill-opacity': 0.82
-      }
-    }, 'hailand-buildings-3d');
-
-    hxMap.addLayer({
-      id: 'hailand-parks-border', type: 'line', source: src, 'source-layer': sl,
-      filter: ['in', ['get','class'], ['literal',['wood','forest','park']]],
-      paint: { 'line-color':'rgba(74,222,128,0.14)', 'line-width':0.8 }
-    });
-  }
-
-  // Arbres emoji DOM sur des positions réelles de Conakry
-  hxMap.once('idle', _ajouterArbresDom);
-}
-
-/* ─── Arbres DOM (figurines 🌳) ─── */
-let _arbresDomAjoutes = false;
-function _ajouterArbresDom() {
-  if(_arbresDomAjoutes || !hxMap) return;
-  _arbresDomAjoutes = true;
-
-  // Points de végétation réels à Conakry (Jardin botanique, Corniche, Kaporo, etc.)
-  const positions = [
-    // Jardin de Guinée / zones vertes Kaloum
-    [-13.6760, 9.5415], [-13.6748, 9.5422], [-13.6772, 9.5408],
-    [-13.6758, 9.5430], [-13.6744, 9.5415],
-    // Corniche
-    [-13.6830, 9.5340], [-13.6845, 9.5328], [-13.6855, 9.5352],
-    [-13.6820, 9.5355], [-13.6840, 9.5365],
-    // Ratoma / Kaporo
-    [-13.6700, 9.5480], [-13.6688, 9.5465], [-13.6712, 9.5495],
-    [-13.6695, 9.5450], [-13.6720, 9.5470],
-    // Matam
-    [-13.6630, 9.5390], [-13.6618, 9.5402], [-13.6645, 9.5378],
-    // Dixinn
-    [-13.6580, 9.5510], [-13.6568, 9.5498], [-13.6592, 9.5522],
-  ];
-
-  const treeEmojis = ['🌳','🌴','🌲','🌿'];
-
-  positions.forEach((pos, i) => {
-    const el = document.createElement('div');
-    const emoji = treeEmojis[i % treeEmojis.length];
-    // Taille variable pour plus de réalisme
-    const size = 0.9 + Math.random() * 0.5;
-    el.innerHTML = emoji;
-    el.style.cssText = `
-      font-size:${size}rem;
-      filter: drop-shadow(0 0 5px rgba(74,222,128,0.5)) drop-shadow(0 2px 2px rgba(0,0,0,0.6));
-      pointer-events:none; user-select:none;
-      transform: rotate(${(Math.random()-0.5)*10}deg);
-    `;
-    new maplibregl.Marker({ element:el, anchor:'bottom' })
-      .setLngLat(pos)
-      .addTo(hxMap);
-  });
-}
-
-/* ─── Couches Eau ─── */
-function _ajouterCouchesEau(src, slWater, slWaterway) {
-  // Modifier la couleur de l'eau existante dans le style
-  const waterLayers = hxMap.getStyle().layers.filter(l =>
-    l.type === 'fill' && (l['source-layer'] === 'water' || (l.id||'').includes('water'))
-  );
-  waterLayers.forEach(l => {
-    try { hxMap.setPaintProperty(l.id, 'fill-color', '#05080f'); } catch(e){}
-    try { hxMap.setPaintProperty(l.id, 'fill-opacity', 0.95); } catch(e){}
-  });
-
-  // Reflet bleuté sur le contour de l'eau
-  if(slWater && !hxMap.getLayer('hailand-water-glow')) {
-    try {
-      hxMap.addLayer({
-        id: 'hailand-water-glow', type: 'line', source: src, 'source-layer': slWater,
-        paint: {
-          'line-color': 'rgba(96,165,250,0.22)',
-          'line-width': 1.5, 'line-blur': 2
-        }
-      });
-    } catch(e){}
-  }
-
-  // Reflet sur les rivières
-  if(slWaterway && !hxMap.getLayer('hailand-waterway-glow')) {
-    try {
-      hxMap.addLayer({
-        id: 'hailand-waterway-glow', type: 'line', source: src, 'source-layer': slWaterway,
-        paint: {
-          'line-color': 'rgba(96,165,250,0.18)',
-          'line-width': ['interpolate',['linear'],['zoom'], 10,1, 14,3, 17,8],
-          'line-blur': 1.5
-        }
-      });
-    } catch(e){}
-  }
-}
-
-/* ─── Lumières nocturnes ─── */
-function _ajouterLumieresNocturnes(src, slBuilding, slTransport) {
-  // Halos de lampadaires : cercles orangés le long des routes
-  if(slTransport && !hxMap.getLayer('hailand-streetlights')) {
-    try {
-      hxMap.addLayer({
-        id: 'hailand-streetlights', type: 'circle', source: src, 'source-layer': slTransport,
-        filter: ['in', ['get','class'], ['literal',['primary','secondary','trunk']]],
-        paint: {
-          'circle-color': 'rgba(245,166,35,0.07)',
-          'circle-radius': ['interpolate',['linear'],['zoom'], 13,8, 16,22, 19,44],
-          'circle-blur': 0.85,
-          'circle-pitch-alignment': 'map'
-        }
-      });
-    } catch(e){}
-  }
-
-  // Fenêtres éclairées sur les bâtiments (points jaunes semi-transparents)
-  if(slBuilding && !hxMap.getLayer('hailand-windows')) {
-    try {
-      // On utilise la couche fill (2D) avec une couleur de fenêtres simulée
-      // car les fill-extrusion ne supportent pas les points internes
-      hxMap.addLayer({
-        id: 'hailand-windows', type: 'fill', source: src, 'source-layer': slBuilding,
-        filter: ['any',
-          ['>', ['coalesce',['get','height'],['get','render_height'],0], 6],
-          ['>', ['coalesce',['get','building:levels'],0], 2]
-        ],
-        paint: {
-          // Tache lumineuse jaune pâle simulant des fenêtres éclairées vues du dessus
-          'fill-color': 'rgba(255,228,100,0.06)',
-          'fill-opacity': [
-            'interpolate',['linear'],['zoom'],
-            14, 0.0,
-            16, 0.5,
-            18, 0.9
-          ]
-        }
-      });
-    } catch(e){}
-  }
-
-  // Lampadaires individuels : points lumineux aux carrefours via GeoJSON généré
-  if(!hxMap.getLayer('hailand-lampadaires')) {
-    // Générer des lampadaires le long des axes principaux de Conakry
+  // Lampadaires GeoJSON (halos 2D sur la carte pour les zooms faibles)
+  if(!hxMap.getSource('hx-lampadaires')) {
     const lampadaires = _genererLampadaires();
-    hxMap.addSource('hx-lampadaires', { type:'geojson', data:{ type:'FeatureCollection', features: lampadaires }});
-    hxMap.addLayer({
-      id: 'hailand-lampadaires-glow', type: 'circle', source: 'hx-lampadaires',
-      paint: {
-        'circle-color': 'rgba(255,200,80,0.15)',
-        'circle-radius': ['interpolate',['linear'],['zoom'], 14,8, 16,16, 18,30],
-        'circle-blur': 0.9
-      }
-    });
-    hxMap.addLayer({
-      id: 'hailand-lampadaires', type: 'circle', source: 'hx-lampadaires',
-      paint: {
-        'circle-color': '#FFCC44',
-        'circle-radius': ['interpolate',['linear'],['zoom'], 14,1, 16,2, 18,3],
-        'circle-opacity': 0.9
-      }
-    });
+    hxMap.addSource('hx-lampadaires', { type:'geojson', data:{ type:'FeatureCollection', features:lampadaires } });
+    hxMap.addLayer({ id:'hailand-lampadaires-halo', type:'circle', source:'hx-lampadaires',
+      paint:{'circle-color':'rgba(255,195,60,0.28)','circle-radius':14,'circle-blur':0.88,'circle-pitch-alignment':'map'} });
+    hxMap.addLayer({ id:'hailand-lampadaires-point', type:'circle', source:'hx-lampadaires',
+      paint:{'circle-color':'#FFE060','circle-radius':2,'circle-opacity':1.0,'circle-pitch-alignment':'map'} });
   }
 }
 
-/* ─── Générer des points de lampadaires le long des rues de Conakry ─── */
+/* ─── Générer points lampadaires ─── */
 function _genererLampadaires() {
-  // Axes principaux de Conakry avec interpolation de points tous les ~50m
   const axes = [
-    // Avenue de la République (Kaloum)
-    [[-13.6795, 9.5290], [-13.6780, 9.5320], [-13.6760, 9.5360], [-13.6745, 9.5395]],
-    // Boulevard Diallo Telly
-    [[-13.6720, 9.5400], [-13.6695, 9.5420], [-13.6668, 9.5445]],
-    // Corniche
-    [[-13.6870, 9.5330], [-13.6845, 9.5345], [-13.6820, 9.5360], [-13.6795, 9.5375]],
-    // Route de Donka
-    [[-13.6640, 9.5460], [-13.6620, 9.5478], [-13.6600, 9.5495], [-13.6580, 9.5512]],
+    [[-13.6795,9.5290],[-13.6780,9.5320],[-13.6760,9.5360],[-13.6745,9.5395]],
+    [[-13.6720,9.5400],[-13.6695,9.5420],[-13.6668,9.5445]],
+    [[-13.6870,9.5330],[-13.6845,9.5345],[-13.6820,9.5360],[-13.6795,9.5375]],
+    [[-13.6640,9.5460],[-13.6620,9.5478],[-13.6600,9.5495],[-13.6580,9.5512]],
   ];
-
   const features = [];
   axes.forEach(axe => {
-    for(let i = 0; i < axe.length - 1; i++) {
-      const [x1,y1] = axe[i], [x2,y2] = axe[i+1];
-      const steps = Math.ceil(Math.hypot(x2-x1, y2-y1) / 0.0004); // ~45m
-      for(let s = 0; s <= steps; s++) {
-        const t = s / steps;
-        // Décaler légèrement sur les côtés (pas au centre de la route)
-        const offset = 0.00008 * (Math.random() > 0.5 ? 1 : -1);
-        features.push({
-          type:'Feature',
-          geometry:{ type:'Point', coordinates:[x1+(x2-x1)*t + offset, y1+(y2-y1)*t + offset]},
-          properties:{}
-        });
+    for(let i=0;i<axe.length-1;i++){
+      const [x1,y1]=axe[i],[x2,y2]=axe[i+1];
+      const steps=Math.ceil(Math.hypot(x2-x1,y2-y1)/0.0004);
+      for(let s=0;s<=steps;s++){
+        const t=s/steps;
+        const offset=0.00008*(Math.random()>.5?1:-1);
+        features.push({ type:'Feature', geometry:{type:'Point',coordinates:[x1+(x2-x1)*t+offset,y1+(y2-y1)*t+offset]}, properties:{} });
       }
     }
   });
   return features;
 }
 
-/* ─── Ambiance générale (brouillard + lumière directionnelle) ─── */
+/* ─── Couches Végétation ─── */
+function _ajouterCouchesVegetation(src, sl) {
+  if(!sl || hxMap.getLayer('hailand-parks')) return;
+
+  hxMap.addLayer({
+    id:'hailand-parks', type:'fill', source:src, 'source-layer':sl,
+    filter:['in',['get','class'],['literal',['wood','forest','grass','meadow','park','scrub','wetland','recreation_ground']]],
+    paint:{
+      'fill-color':['match',['get','class'],'wood','#1c3d1e','forest','#193a1b','grass','#224422','park','#234825','#1a3c1c'],
+      'fill-opacity':1.0
+    }
+  });
+  hxMap.addLayer({
+    id:'hailand-tree-canopy', type:'fill', source:src, 'source-layer':sl,
+    filter:['in',['get','class'],['literal',['wood','forest','park']]],
+    paint:{ 'fill-color':'#2a5c2e', 'fill-opacity':['interpolate',['linear'],['zoom'],12,0.5,16,0.8], 'fill-translate':[0,-1] }
+  });
+  hxMap.addLayer({
+    id:'hailand-parks-border', type:'line', source:src, 'source-layer':sl,
+    filter:['in',['get','class'],['literal',['wood','forest','park']]],
+    paint:{ 'line-color':'rgba(90,210,100,0.30)', 'line-width':1.2 }
+  });
+}
+
+/* ─── Couches Eau ─── */
+function _ajouterCouchesEau(src, slWater, slWaterway) {
+  hxMap.getStyle().layers.filter(l=>l.type==='fill'&&(l['source-layer']==='water'||(l.id||'').includes('water'))).forEach(l=>{
+    try{hxMap.setPaintProperty(l.id,'fill-color','#05080f');}catch(e){}
+    try{hxMap.setPaintProperty(l.id,'fill-opacity',0.95);}catch(e){}
+  });
+  if(slWater && !hxMap.getLayer('hailand-water-glow')) {
+    try{ hxMap.addLayer({ id:'hailand-water-glow', type:'line', source:src, 'source-layer':slWater,
+      paint:{'line-color':'rgba(96,165,250,0.22)','line-width':1.5,'line-blur':2} }); }catch(e){}
+  }
+  if(slWaterway && !hxMap.getLayer('hailand-waterway-glow')) {
+    try{ hxMap.addLayer({ id:'hailand-waterway-glow', type:'line', source:src, 'source-layer':slWaterway,
+      paint:{'line-color':'rgba(96,165,250,0.18)','line-width':['interpolate',['linear'],['zoom'],10,1,14,3,17,8],'line-blur':1.5} }); }catch(e){}
+  }
+}
+
+/* ─── Ambiance générale ─── */
 function _configurerAmbiance() {
   try {
-    hxMap.setFog({ range:[0.5,10], color:'#0d0f14', 'horizon-blend':0.08 });
-  } catch(e) {}
+    hxMap.setLight({ anchor:'viewport', color:'#FFE8A0', intensity:0.55, position:[1.5,225,45] });
+  } catch(e){}
   try {
-    hxMap.setLight({ anchor:'viewport', color:'#F5A623', intensity:0.38, position:[1.5,180,80] });
-  } catch(e) {}
+    hxMap.setFog({ range:[2,18], color:'#080c14', 'horizon-blend':0.04 });
+  } catch(e){}
 }
 
-// ════════════════════════════════════════════════════
-// HAILANDMAP VISION 3D – Threebox Engine CORRIGÉ
-//
-// CORRECTIONS APPLIQUÉES :
-// 1. Les fill-extrusion (blocs gris) sont masqués dès que
-//    Threebox est actif → les GLB deviennent visibles
-// 2. tb.loadObj() utilisé à chaque fois (pas .clone() qui
-//    ne fonctionne pas sur les objets Threebox)
-// 3. Le custom layer est inséré APRÈS les couches de fond
-//    mais AVANT les couches de routes/labels → bonne profondeur
-// 4. Queue de chargement throttlée → pas de gel
-// 5. Frustum culling → seuls les bâtiments visibles chargent
-// 6. LOD : GLB proche, cube 2D loin → performances mobile OK
-// ════════════════════════════════════════════════════
+/* ─── Modes carte (2D / 3D / Satellite) ─── */
+function setMapMode(mode) {
+  mapCurrentMode = mode;
+  document.querySelectorAll('.map-mode-btn').forEach(b => b.classList.remove('active'));
 
-/* ── ID Supabase & URL du bucket public ── */
-const SUPABASE_PROJECT_ID = 'plisyaquijijmwbbuegy';
-const SUPABASE_ASSETS = `https://${SUPABASE_PROJECT_ID}.supabase.co/storage/v1/object/public/hailand-assets`;
-
-/* ── Catalogue des assets GLB (chemins relatifs au bucket) ── */
-const ASSETS = {
-  batiments_sub: [
-    'hailand-assets-kenny_city_suburban/building-type-a.glb',
-    'hailand-assets-kenny_city_suburban/building-type-b.glb',
-    'hailand-assets-kenny_city_suburban/building-type-f.glb',
-    'hailand-assets-kenny_city_suburban/building-type-h.glb',
-    'hailand-assets-kenny_city_suburban/building-type-j.glb',
-  ],
-  batiments_ind: [
-    'hailand-assets-kenny_city_industrial/building-a.glb',
-    'hailand-assets-kenny_city_industrial/building-l.glb',
-    'hailand-assets-kenny_city_industrial/building-m.glb',
-  ],
-  batiments_city: [
-    'hailand-assets-kaykit_city/building_A.gltf',
-    'hailand-assets-kaykit_city/building_B.gltf',
-    'hailand-assets-kaykit_city/building_C.gltf',
-    'hailand-assets-kaykit_city/building_D.gltf',
-  ],
-  gratte_ciels: [
-    'building-skyscraper-a.glb',
-    'building-skyscraper-b.glb',
-  ],
-  arbres: [
-    'hailand-assets-kaykit_forest/Tree_1_A_Color1.gltf',
-    'hailand-assets-kaykit_forest/Tree_4_A_Color1.gltf',
-    'hailand-assets-kenny_city_suburban/tree-large.glb',
-  ],
-  lampadaire: 'hailand-assets-kaykit_city/streetlight.gltf',
-};
-
-/* ══════════════════════════════════════════════════
-   ÉTAT GLOBAL DU MOTEUR
-══════════════════════════════════════════════════ */
-let tb          = null;   // instance Threebox
-let tb3dActive  = false;
-let tb3dVisible = true;
-
-// Budget : max 25 objets GLB simultanément sur mobile
-const MAX_OBJECTS_3D = 25;
-let   _objectCount   = 0;
-
-// Objets placés (pour frustum culling)
-const _placedObjects = [];
-
-// Queue de chargement (max 2 en parallèle pour ne pas saturer le réseau)
-const _loadQueue    = [];
-let   _loadingCount = 0;
-const MAX_PARALLEL  = 2;
-
-/* ══════════════════════════════════════════════════
-   A. QUEUE DE CHARGEMENT THROTTLÉE
-   → Charge 2 modèles max simultanément.
-   → Entre chaque batch, cède le thread au navigateur
-     via requestAnimationFrame pour éviter tout gel.
-══════════════════════════════════════════════════ */
-function _enqueue(url, scale, coords, rotation, onPlaced) {
-  _loadQueue.push({ url, scale, coords, rotation, onPlaced });
-  _drainQueue();
+  if(mode === '3d') {
+    hxMap.easeTo({ pitch:65, bearing:-15, duration:800 });
+    document.getElementById('btn-mode-3d')?.classList.add('active');
+  } else if(mode === '2d') {
+    hxMap.easeTo({ pitch:0, bearing:0, duration:800 });
+    document.querySelector('.map-mode-btn:first-child')?.classList.add('active');
+  } else if(mode === 'satellite') {
+    hxMap.easeTo({ pitch:50, bearing:0, duration:800 });
+    document.querySelector('.map-mode-bar button:last-child')?.classList.add('active');
+    // Switcher vers style satellite temporairement
+    toast('🛰️ Mode satellite activé','');
+  }
 }
 
-function _drainQueue() {
-  if (_loadingCount >= MAX_PARALLEL) return;
-  const item = _loadQueue.shift();
-  if (!item || !tb) return;
-
-  _loadingCount++;
-  const { url, scale, coords, rotation, onPlaced } = item;
-
-  tb.loadObj(
-    {
-      obj:      url,
-      type:     url.endsWith('.gltf') ? 'gltf' : 'gltf',
-      scale:    scale,
-      units:    'meters',
-      rotation: rotation || { x: 90, y: 0, z: 0 },
-      anchor:   'bottom',
-    },
-    (obj) => {
-      _loadingCount--;
-
-      if (obj) {
-        // Positionner le modèle sur la carte
-        obj.setCoords(coords);
-        _appliquerMateriauNuit(obj);
-        tb.add(obj);
-        _objectCount++;
-        _placedObjects.push({ obj, lng: coords[0], lat: coords[1] });
-        if (onPlaced) onPlaced(obj);
-      }
-
-      // Cède le thread une frame avant de charger le suivant
-      requestAnimationFrame(() => _drainQueue());
-    }
-  );
-}
-
-/* ══════════════════════════════════════════════════
-   B. INIT THREEBOX
-   CORRECTION CLÉ : le custom layer est ajouté en premier
-   dans onAdd, PUIS on masque les fill-extrusion MapLibre
-   qui cachaient les GLB.
-══════════════════════════════════════════════════ */
-function _initThreebox() {
-  if (tb) return;
-
-  const tb3dLayer = {
-    id:            'hailand-3d-layer',
-    type:          'custom',
-    renderingMode: '3d',
-
-    onAdd(map, gl) {
-      tb = new Threebox(map, gl, {
-        defaultLights:          false,
-        enableSelectingObjects: false,
-        enableDraggingObjects:  false,
-        enableRotatingObjects:  false,
-        enableTooltips:         false,
-      });
-
-      // ── Lumières Three.js ──
-      const amb  = new THREE.AmbientLight(0x1a2035, 0.65);
-      const moon = new THREE.DirectionalLight(0x4a6fa8, 0.50);
-      moon.position.set(200, 400, 300);
-      const warm = new THREE.HemisphereLight(0xF5A623, 0x080d18, 0.35);
-      tb.scene.add(amb, moon, warm);
-
-      tb3dActive = true;
-      console.log('[Threebox] ✅ Moteur 3D initialisé');
-
-      // ── CORRECTION #1 : masquer les fill-extrusion MapLibre
-      // (les blocs gris qui cachaient les GLB)
-      _masquerExtrusionsMapLibre();
-
-      // ── Lancer la génération en mode lazy ──
-      requestAnimationFrame(() => _genererSceneLazy());
-    },
-
-    render(gl, matrix) {
-      if (tb && tb3dVisible) tb.update();
-    }
+/* ─── Horloge nocturne dans la topbar ─── */
+function _demarrerHorloge() {
+  const el = document.getElementById('map-clock');
+  if(!el) return;
+  const update = () => {
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2,'0');
+    const m = String(now.getMinutes()).padStart(2,'0');
+    const icon = (now.getHours() >= 6 && now.getHours() < 18) ? '☀️' : '🌙';
+    el.textContent = `${icon} ${h}:${m}`;
   };
-
-  // Ajouter le layer Threebox à la carte
-  hxMap.addLayer(tb3dLayer);
+  update();
+  setInterval(update, 30000);
 }
 
-/* ── Masquer les couches fill-extrusion MapLibre ──
-   Ces couches sont des "blobs" vectoriels qui occupent
-   l'espace et cachent les modèles GLB placés au-dessus.
-   On les rend transparentes dès que Threebox est actif.
-   On garde une ombre subtile (building-shadow) pour la
-   profondeur visuelle, mais on masque les corps et toits. */
-function _masquerExtrusionsMapLibre() {
-  const couchesAMasquer = [
-    'hailand-buildings-3d',
-    'hailand-buildings-roof',
-  ];
-  couchesAMasquer.forEach(id => {
-    try {
-      if (hxMap.getLayer(id)) {
-        // Opacité à 0 : invisible mais couche gardée pour les ombres
-        hxMap.setPaintProperty(id, 'fill-extrusion-opacity', 0);
-        console.log(`[Threebox] Couche masquée : ${id}`);
-      }
-    } catch (e) {
-      console.warn(`[Threebox] Impossible de masquer ${id}:`, e.message);
-    }
+/* ─── Mettre à jour la position client ─── */
+function actualiserPositionClient(lat, lon) {
+  if(!hxMap) return;
+
+  if(!userMarker) {
+    // Créer le marqueur pulsé bleu
+    const el = document.createElement('div');
+    el.className = 'user-pos-marker';
+    userMarker = new maplibregl.Marker({ element:el, anchor:'center' })
+      .setLngLat([lon, lat])
+      .setPopup(new maplibregl.Popup({ offset:20 }).setHTML('<b style="color:#60A5FA">📍 Vous êtes ici</b>'))
+      .addTo(hxMap);
+    hxMap.flyTo({ center:[lon,lat], zoom:16, pitch:65, bearing:-15, duration:1200 });
+  } else {
+    userMarker.setLngLat([lon, lat]);
+  }
+}
+
+/* ─── Charger boutiquiers sur la carte ─── */
+async function chargerBoutiquiersHailandX() {
+  if(!hxMap) return;
+
+  // Supprimer anciens marqueurs
+  btqMarkers.forEach(m => m.remove());
+  btqMarkers = [];
+
+  const { data: boutiques, error } = await _sb
+    .from('vendeurs')
+    .select('nom_boutique, latitude, longitude, telephone, zone');
+
+  if(error || !boutiques) return;
+
+  let count = 0;
+  boutiques.forEach(btq => {
+    const lat = parseFloat(btq.latitude);
+    const lon = parseFloat(btq.longitude);
+    if(!lat || !lon || isNaN(lat) || isNaN(lon)) return;
+    count++;
+
+    // Marqueur doré boutique
+    const el = document.createElement('div');
+    el.className = 'btq-dot';
+    el.title = btq.nom_boutique || 'Boutique';
+
+    const nomEsc = (btq.nom_boutique||'Boutique').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    const popup = new maplibregl.Popup({ offset:16, maxWidth:'200px' }).setHTML(`
+      <div class="btq-popup">
+        <strong>🏪 ${sanitize(btq.nom_boutique||'Boutique')}</strong>
+        <small>📍 ${sanitize(btq.zone||'Conakry')} · Partenaire HailandX</small>
+        <button class="btn-itineraire"
+          onclick="tracerRoute(${lat},${lon},'${nomEsc}');document.querySelector('.maplibregl-popup-close-button')?.click()">
+          🗺️ Itinéraire
+        </button>
+        <button class="btn-commander-popup"
+          onclick="fermerHailandMap();commander('',${JSON.stringify(btq.telephone||'')},0)">
+          🛒 Commander ici
+        </button>
+      </div>`);
+
+    const marker = new maplibregl.Marker({ element:el, anchor:'center' })
+      .setLngLat([lon, lat])
+      .setPopup(popup)
+      .addTo(hxMap);
+
+    btqMarkers.push(marker);
   });
-  // L'ombre au sol est gardée à 0.25 pour la profondeur
-  try {
-    if (hxMap.getLayer('building-shadow')) {
-      hxMap.setPaintProperty('building-shadow', 'fill-extrusion-opacity', 0.25);
-    }
-  } catch(e) {}
+
+  const el = document.getElementById('map-count-btq');
+  if(el) el.textContent = count;
 }
 
-/* ══════════════════════════════════════════════════
-   C. GÉNÉRATION LAZY — lots de 3 bâtiments
-   Entre chaque lot : requestAnimationFrame pour ne
-   jamais bloquer le thread plus de 16ms (= 1 frame)
-══════════════════════════════════════════════════ */
-async function _genererSceneLazy() {
-  if (!tb) return;
+/* ─── Stats livreurs ─── */
+async function chargerStatsCarte() {
+  const { count } = await _sb.from('livreurs')
+    .select('telephone', { count:'exact', head:true });
+  const el = document.getElementById('map-count-livreurs');
+  if(el) el.textContent = count || 0;
+}
 
-  const BBOX = {
-    minLng: -13.700, maxLng: -13.655,
-    minLat:  9.522,  maxLat:  9.558
-  };
-
-  toast('🏙️ Chargement des bâtiments 3D…', '');
-
-  // 1. Récupérer les bâtiments OSM (non-bloquant)
-  const batiments = await _fetchBatimentsOSM(BBOX);
-
-  // 2. Filtrer par frustum (ce qui est à l'écran)
-  const visibles = _filtrerFrustum(batiments);
-
-  // 3. Trier par distance (les plus proches d'abord)
-  const tries = _trierParDistance(visibles).slice(0, MAX_OBJECTS_3D);
-
-  console.log(`[Threebox] ${tries.length} bâtiments à placer`);
-
-  // 4. Placer par lots de 3 avec pause entre chaque lot
-  for (let i = 0; i < tries.length; i += 3) {
-    if (_objectCount >= MAX_OBJECTS_3D) break;
-
-    const lot = tries.slice(i, i + 3);
-    lot.forEach((el, j) => _placerBatiment(el, i + j));
-
-    // Pause d'une frame entre chaque lot → l'écran reste fluide
-    await new Promise(r => requestAnimationFrame(r));
+/* ─── Tracer itinéraire (ligne animée verte) ─── */
+async function tracerRoute(destLat, destLon, destNom) {
+  if(!hxMap || !userMarker) {
+    toast('Activez le GPS pour obtenir un itinéraire','warn'); return;
   }
 
-  // 5. Arbres et lampadaires après les bâtiments
-  setTimeout(() => _placerArbres(BBOX), 300);
-  setTimeout(() => _placerLampadaires(), 600);
+  const userLL = userMarker.getLngLat();
 
-  toast('✅ Carte 3D chargée !', 'success');
+  // Supprimer l'ancien itinéraire
+  annulerItineraire();
+
+  // Afficher panel
+  const panel = document.getElementById('route-info-panel');
+  const elDest  = document.getElementById('route-dest-name');
+  const elStats = document.getElementById('route-stats');
+  if(panel)  panel.classList.remove('hidden');
+  if(elDest) elDest.textContent = '🏪 '+destNom;
+  if(elStats) elStats.textContent = '⏳ Calcul…';
+
+  // Requête OSRM (routage libre)
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${userLL.lng},${userLL.lat};${destLon},${destLat}?overview=full&geometries=geojson`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const data = await res.json();
+
+    if(data.routes && data.routes.length > 0) {
+      const route = data.routes[0];
+      const km    = (route.distance/1000).toFixed(1);
+      const min   = Math.round(route.duration/60);
+      if(elStats) elStats.textContent = `📏 ${km} km · ⏱️ ~${min} min à moto`;
+
+      // Source GeoJSON de la ligne
+      if(hxMap.getSource('hx-route')) {
+        hxMap.getSource('hx-route').setData(route.geometry);
+      } else {
+        hxMap.addSource('hx-route', { type:'geojson', data: route.geometry });
+
+        // Halo vert sous la route
+        hxMap.addLayer({
+          id: 'hx-route-glow',
+          type: 'line',
+          source: 'hx-route',
+          paint: {
+            'line-color': 'rgba(74,222,128,0.25)',
+            'line-width': 12, 'line-blur': 4
+          }
+        });
+
+        // Ligne principale verte
+        hxMap.addLayer({
+          id: 'hx-route-line',
+          type: 'line',
+          source: 'hx-route',
+          paint: {
+            'line-color': '#4ADE80',
+            'line-width': 4, 'line-opacity': 0.9
+          }
+        });
+
+        // Marquage blanc central animé (tirets)
+        hxMap.addLayer({
+          id: 'hx-route-dash',
+          type: 'line',
+          source: 'hx-route',
+          paint: {
+            'line-color': 'rgba(255,255,255,0.7)',
+            'line-width': 1.5,
+            'line-dasharray': [4, 6]
+          }
+        });
+      }
+
+      // Ajuster la vue pour voir toute la route
+      const coords = route.geometry.coordinates;
+      const bounds = coords.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(coords[0], coords[0]));
+      hxMap.fitBounds(bounds, { padding:{top:80,bottom:120,left:40,right:40}, maxZoom:16 });
+
+    } else {
+      // Fallback : ligne droite
+      _tracerLigneDroite(userLL, {lng:destLon,lat:destLat});
+      if(elStats) elStats.textContent = '📏 Estimation directe (réseau indisponible)';
+    }
+  } catch(e) {
+    _tracerLigneDroite(userLL, {lng:destLon,lat:destLat});
+    if(elStats) elStats.textContent = '📏 Ligne directe';
+  }
 }
 
-/* ══════════════════════════════════════════════════
-   D. FRUSTUM CULLING — ne charger que ce qui est visible
-══════════════════════════════════════════════════ */
-function _filtrerFrustum(batiments) {
-  if (!hxMap) return batiments;
-  const b   = hxMap.getBounds();
-  const pad = 0.003;
-  return batiments.filter(el => {
-    const c = _centreGeo(el.geometry || []);
-    return c[0] >= b.getWest()  - pad && c[0] <= b.getEast()  + pad &&
-           c[1] >= b.getSouth() - pad && c[1] <= b.getNorth() + pad;
-  });
+/* ─── Ligne droite de fallback ─── */
+function _tracerLigneDroite(from, to) {
+  const geom = { type:'LineString', coordinates:[[from.lng,from.lat],[to.lng,to.lat]] };
+  if(hxMap.getSource('hx-route')) {
+    hxMap.getSource('hx-route').setData(geom);
+  } else {
+    hxMap.addSource('hx-route', { type:'geojson', data:geom });
+    hxMap.addLayer({ id:'hx-route-glow', type:'line', source:'hx-route',
+      paint:{ 'line-color':'rgba(74,222,128,0.2)', 'line-width':10, 'line-blur':4 }});
+    hxMap.addLayer({ id:'hx-route-line', type:'line', source:'hx-route',
+      paint:{ 'line-color':'#4ADE80', 'line-width':3,
+              'line-dasharray':[6,4] }});
+  }
 }
 
-function _trierParDistance(batiments) {
-  if (!userMarker) return batiments;
-  const ull = userMarker.getLngLat();
-  return [...batiments].sort((a, b) => {
-    const ca = _centreGeo(a.geometry || []);
-    const cb = _centreGeo(b.geometry || []);
-    const da = Math.hypot(ca[0] - ull.lng, ca[1] - ull.lat);
-    const db = Math.hypot(cb[0] - ull.lng, cb[1] - ull.lat);
-    return da - db;
-  });
+/* ─── Annuler l'itinéraire ─── */
+function annulerItineraire() {
+  if(hxMap) {
+    ['hx-route-glow','hx-route-line','hx-route-dash'].forEach(id => {
+      try { if(hxMap.getLayer(id)) hxMap.removeLayer(id); } catch(e){}
+    });
+    try { if(hxMap.getSource('hx-route')) hxMap.removeSource('hx-route'); } catch(e){}
+  }
+  const panel = document.getElementById('route-info-panel');
+  if(panel) panel.classList.add('hidden');
 }
 
-/* ══════════════════════════════════════════════════
-   E. LOD — Level of Detail
-   < 250m  → modèle GLB haute qualité
-   250-600m → cube simple (Three.js, zéro réseau)
-   > 600m  → ignoré
-══════════════════════════════════════════════════ */
-function _lod(centre) {
-  if (!userMarker) return 'HIGH';
-  const ull  = userMarker.getLngLat();
-  const dist = Math.hypot(centre[0] - ull.lng, centre[1] - ull.lat) * 111000; // en mètres
-  if (dist < 250) return 'HIGH';
-  if (dist < 600) return 'LOW';
-  return 'NONE';
+/* ─── Centrer sur la position ─── */
+function centrerSurMoi() {
+  if(userMarker && hxMap) {
+    hxMap.flyTo({ center:userMarker.getLngLat(), zoom:17, pitch:65, bearing:-15, duration:1000 });
+    userMarker.togglePopup();
+  } else {
+    toast('GPS en cours d\'acquisition…','warn');
+  }
 }
 
-/* ══════════════════════════════════════════════════
-   F. PLACER UN BÂTIMENT (GLB ou cube selon LOD)
-══════════════════════════════════════════════════ */
-function _placerBatiment(element, index) {
-  const coords  = element.geometry || [];
-  if (coords.length < 3 || _objectCount >= MAX_OBJECTS_3D) return;
+/* ─── Fermer la carte ─── */
+function fermerHailandMap() {
+  if(mapWatchId !== null) {
+    navigator.geolocation.clearWatch(mapWatchId);
+    mapWatchId = null;
+  }
+  annulerItineraire();
+  const overlay = document.getElementById('hailand-map-overlay');
+  if(overlay) overlay.classList.add('hidden');
+}
 
-  const centre  = _centreGeo(coords);
-  const hauteur = _hauteurOSM(element.tags || {});
-  const surface = _surfaceGeo(coords);
-  const lod     = _lod(centre);
+// ════════════════════════════════════════════════════
+// HAILANDMAP – Verrouillage de Zone (Adressage OSM)
+// ════════════════════════════════════════════════════
+let zoneActive     = null;   // polygone actif sur la carte
+let zoneLabelLayer = null;   // étiquette surface
+let _pendingCoords = null;   // données en attente de confirmation
+let _pendingSurface= 0;
+let _pendingBuildId= null;
 
-  if (lod === 'NONE') return;
+/* ─── Lancer le verrouillage depuis position GPS actuelle ─── */
+function initierVerrouillage() {
+  if(!hxMap) { toast('Ouvrez d\'abord HailandMap','warn'); return; }
 
-  // LOD LOW → cube Three.js (instantané, zéro réseau)
-  if (lod === 'LOW') {
-    _placerCube(centre, hauteur, surface);
+  const btn = document.getElementById('btn-lock-zone');
+  if(btn) { btn.innerHTML = '<span class="lock-spinner"></span> Scan…'; btn.disabled = true; }
+
+  if(!userMarker) {
+    toast('GPS en cours d\'acquisition…','warn');
+    if(btn) { btn.innerHTML = '🏠 Verrouiller'; btn.disabled = false; }
     return;
   }
 
-  // LOD HIGH → modèle GLB depuis Supabase
-  const catalogue = hauteur > 25      ? ASSETS.gratte_ciels :
-                    surface > 500     ? ASSETS.batiments_ind :
-                    surface > 200     ? ASSETS.batiments_city :
-                                        ASSETS.batiments_sub;
-
-  const idx  = Math.abs(Math.floor((centre[0] * 10000 + centre[1] * 10000))) % catalogue.length;
-  const url  = `${SUPABASE_ASSETS}/${catalogue[idx]}`;
-  const sc   = _echelle(surface, hauteur);
-
-  _enqueue(
-    url,
-    { x: sc.x, y: sc.y, z: sc.z },
-    [centre[0], centre[1], 0],
-    { x: 90, y: 0, z: (index * 37.3) % 360 },
-    null
-  );
-}
-
-/* Cube Three.js simple pour le LOD bas — aucune requête réseau */
-function _placerCube(centre, hauteur, surface) {
-  if (!tb || _objectCount >= MAX_OBJECTS_3D) return;
-
-  const cote = Math.sqrt(Math.max(surface, 80)) * 0.35;
-  const h    = Math.max(hauteur, 4);
-
-  // Créer un mesh Three.js et l'envelopper dans un objet Threebox
-  const geom = new THREE.BoxGeometry(cote, cote, h);
-  const mat  = new THREE.MeshLambertMaterial({
-    color:             new THREE.Color().setHSL(0.60, 0.25, 0.16),
-    emissive:          new THREE.Color(0x08101e),
-    emissiveIntensity: 0.08,
-  });
-  const mesh = new THREE.Mesh(geom, mat);
-
-  // tb.add() attend un objet avec setCoords — on utilise tb.loadObj avec une géométrie inlinée
-  // Astuce : on crée un Group Threebox vide et on y attache le mesh manuellement
-  const group = new THREE.Group();
-  group.add(mesh);
-
-  const tbObj = tb.add(group);
-  if (tbObj && tbObj.setCoords) {
-    tbObj.setCoords([centre[0], centre[1], h / 2]);
-    _objectCount++;
-    _placedObjects.push({ obj: tbObj, lng: centre[0], lat: centre[1] });
-  }
-}
-
-/* ══════════════════════════════════════════════════
-   G. ARBRES
-══════════════════════════════════════════════════ */
-function _placerArbres(bbox) {
-  const positions = _posArbres(bbox).slice(0, 12);
-  positions.forEach((pos, i) => {
-    if (_objectCount >= MAX_OBJECTS_3D) return;
-    const url = `${SUPABASE_ASSETS}/${ASSETS.arbres[i % ASSETS.arbres.length]}`;
-    const h   = 1.5 + Math.random() * 1.0;
-    setTimeout(() => {
-      _enqueue(url, { x: h, y: h, z: h }, [pos[0], pos[1], 0], { x: 90, y: 0, z: Math.random() * 360 }, null);
-    }, i * 40);
+  const { lat, lng } = userMarker.getLatLng();
+  verrouillerMaison(lat, lng).finally(() => {
+    if(btn) { btn.innerHTML = '🏠 Verrouiller'; btn.disabled = false; }
   });
 }
 
-/* ══════════════════════════════════════════════════
-   H. LAMPADAIRES
-   Une seule PointLight globale (pas une par lampadaire)
-   → ×10 plus performant sur mobile
-══════════════════════════════════════════════════ */
-function _placerLampadaires() {
-  if (!tb) return;
+/* ─── Requête Overpass : trouver le bâtiment au point GPS ─── */
+async function verrouillerMaison(lat, lon) {
+  const query = `[out:json];way["building"](around:10,${lat},${lon});out geom;`;
+  const url   = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
 
-  // Une PointLight globale pour l'ambiance dorée
-  const pt = new THREE.PointLight(0xFFCC44, 0.9, 250);
-  pt.position.set(0, 0, 15);
-  tb.scene.add(pt);
-
-  // Les modèles GLB des lampadaires (seulement 8)
-  const url = `${SUPABASE_ASSETS}/${ASSETS.lampadaire}`;
-  const positions = [
-    [-13.6795, 9.5320], [-13.6770, 9.5360], [-13.6745, 9.5395],
-    [-13.6820, 9.5345], [-13.6695, 9.5425], [-13.6640, 9.5462],
-    [-13.6678, 9.5440], [-13.6730, 9.5410],
-  ];
-
-  positions.forEach((pos, i) => {
-    if (_objectCount >= MAX_OBJECTS_3D) return;
-    setTimeout(() => {
-      _enqueue(url, { x: 1.4, y: 1.4, z: 1.4 }, [pos[0], pos[1], 0], { x: 90, y: 0, z: 0 },
-        (obj) => {
-          // Rendre l'ampoule émissive
-          obj.traverse(child => {
-            if (!child.isMesh || !child.material) return;
-            const n = (child.material.name || child.name || '').toLowerCase();
-            if (n.includes('light') || n.includes('lamp') || n.includes('bulb') || n.includes('glass')) {
-              child.material.emissive.setHex(0xFFD700);
-              child.material.emissiveIntensity = 2.8;
-              child.material.color.setHex(0xFFEE88);
-            }
-          });
-        }
-      );
-    }, i * 50);
-  });
-}
-
-/* ══════════════════════════════════════════════════
-   I. MATÉRIAUX NOCTURNES POUR LES GLB
-══════════════════════════════════════════════════ */
-function _appliquerMateriauNuit(obj) {
-  if (!obj || !obj.traverse) return;
-  obj.traverse(child => {
-    if (!child.isMesh || !child.material) return;
-    const name = (child.material.name || child.name || '').toLowerCase();
-
-    if (name.includes('window') || name.includes('glass') || name.includes('vitre')) {
-      child.material.emissive    = new THREE.Color(0xFFD700);
-      child.material.emissiveIntensity = Math.random() > 0.35 ? 1.8 : 0.05;
-      child.material.transparent = true;
-      child.material.opacity     = 0.88;
-    } else if (name.includes('roof') || name.includes('toit') || name.includes('top')) {
-      child.material.color.multiplyScalar(0.50);
-      child.material.emissive          = new THREE.Color(0x0a0f20);
-      child.material.emissiveIntensity = 0.10;
-    } else {
-      child.material.color.multiplyScalar(0.60);
-      if (!child.material.emissive) child.material.emissive = new THREE.Color(0x000000);
-    }
-    child.material.needsUpdate = true;
-  });
-}
-
-/* ══════════════════════════════════════════════════
-   J. FETCH OSM (non-bloquant, timeout court)
-══════════════════════════════════════════════════ */
-async function _fetchBatimentsOSM(bbox) {
-  const q = `[out:json][timeout:12];
-    (way["building"](${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng}););
-    out geom;`;
   try {
-    const r = await fetch(
-      'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q),
-      { signal: AbortSignal.timeout(9000) }
-    );
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d = await r.json();
-    const elems = (d.elements || []).filter(e => e.geometry?.length >= 3);
-    console.log(`[OSM] ${elems.length} bâtiments récupérés`);
-    return elems;
-  } catch (e) {
-    console.warn('[OSM] Overpass indisponible, fallback procédural:', e.message);
-    return _batimentsProceduraux(bbox);
-  }
-}
+    toast('🔍 Scan du bâtiment en cours…','');
+    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const data = await response.json();
 
-/* Bâtiments procéduraux si Overpass ne répond pas */
-function _batimentsProceduraux(bbox) {
-  const builds = [];
-  for (let c = 0; c < 6; c++) {
-    for (let r = 0; r < 5; r++) {
-      if (Math.random() < 0.65) {
-        const dLon = (bbox.maxLng - bbox.minLng) / 6;
-        const dLat = (bbox.maxLat - bbox.minLat) / 5;
-        const lon  = bbox.minLng + c * dLon + Math.random() * dLon * 0.5;
-        const lat  = bbox.minLat + r * dLat + Math.random() * dLat * 0.5;
-        const s    = 0.0003 + Math.random() * 0.0005;
-        builds.push({
-          geometry: [
-            { lon: lon-s, lat: lat-s }, { lon: lon+s, lat: lat-s },
-            { lon: lon+s, lat: lat+s }, { lon: lon-s, lat: lat+s },
-          ],
-          tags: { 'building:levels': String(1 + Math.floor(Math.random() * 5)) }
-        });
-      }
+    if(data.elements && data.elements.length > 0) {
+      const batiment = data.elements[0];
+      const coords   = batiment.geometry.map(p => [p.lat, p.lon]);
+      const surface  = calculerSurface(coords);
+      afficherZoneVerrouillee(coords, surface, batiment.id);
+    } else {
+      toast('⚠️ Aucun bâtiment détecté. Vérifiez d\'être à l\'intérieur de votre domicile.','warn');
     }
+  } catch(e) {
+    console.warn('Overpass timeout ou erreur:', e);
+    // Fallback : zone circulaire autour du point GPS
+    _afficherZoneFallback(lat, lon);
   }
-  return builds;
 }
 
-/* ══════════════════════════════════════════════════
-   K. TOGGLE 3D ON/OFF
-══════════════════════════════════════════════════ */
-function toggle3DScene() {
-  tb3dVisible = !tb3dVisible;
-  const btn = document.getElementById('btn-toggle-3d');
-  if (btn) btn.textContent = tb3dVisible ? '🏙️ 3D ON' : '🗺️ 2D';
-
-  // Quand on remet le 3D ON, re-masquer les extrusions
-  if (tb3dVisible) _masquerExtrusionsMapLibre();
-  else {
-    // Redonner un peu de visibilité aux extrusions en mode 2D
-    try {
-      if (hxMap.getLayer('hailand-buildings-3d'))
-        hxMap.setPaintProperty('hailand-buildings-3d', 'fill-extrusion-opacity', 0.7);
-    } catch(e) {}
-  }
-  hxMap.triggerRepaint();
-}
-
-/* ══════════════════════════════════════════════════
-   L. DÉMARRAGE — appelé depuis _initMapLibre onLoad
-══════════════════════════════════════════════════ */
-function _demarrerThreebox() {
-  // Attendre zoom ≥ 13 pour ne pas charger inutilement
-  if (hxMap.getZoom() >= 13) {
-    _initThreebox();
-  } else {
-    hxMap.once('zoomend', () => {
-      if (hxMap.getZoom() >= 13 && !tb) _initThreebox();
-    });
-  }
-
-  // Frustum culling dynamique : refresh quand la carte bouge
-  let _throttle = null;
-  hxMap.on('moveend', () => {
-    if (_throttle) return;
-    _throttle = setTimeout(() => {
-      _throttle = null;
-      _rafraichirVisibilite();
-    }, 500);
-  });
-}
-
-/* Masquer/afficher les objets hors écran */
-function _rafraichirVisibilite() {
-  if (!hxMap) return;
-  const b   = hxMap.getBounds();
-  const pad = 0.004;
-  _placedObjects.forEach(({ obj, lng, lat }) => {
-    const vis = lng >= b.getWest() - pad && lng <= b.getEast() + pad &&
-                lat >= b.getSouth() - pad && lat <= b.getNorth() + pad;
-    if (obj && typeof obj.visible !== 'undefined') obj.visible = vis;
-  });
-  hxMap.triggerRepaint();
-}
-
-/* ══════════════════════════════════════════════════
-   M. UTILITAIRES GÉOGRAPHIQUES
-══════════════════════════════════════════════════ */
-function _centreGeo(coords) {
-  if (!coords.length) return [0, 0];
-  const n = coords.length;
-  return [
-    coords.reduce((s, c) => s + (c.lon !== undefined ? c.lon : c[0]), 0) / n,
-    coords.reduce((s, c) => s + (c.lat !== undefined ? c.lat : c[1]), 0) / n,
+/* ─── Fallback si Overpass ne répond pas (zone circulaire) ─── */
+function _afficherZoneFallback(lat, lon) {
+  toast('📡 Réseau lent – zone estimée affichée','warn');
+  // Générer un polygone carré ~20m autour du point
+  const d = 0.0001;
+  const coords = [
+    [lat+d, lon-d], [lat+d, lon+d],
+    [lat-d, lon+d], [lat-d, lon-d]
   ];
+  afficherZoneVerrouillee(coords, 400, 'fallback_' + Date.now());
 }
 
-function _surfaceGeo(coords) {
-  if (coords.length < 3) return 100;
-  let a = 0;
-  for (let i = 0; i < coords.length; i++) {
-    const j  = (i + 1) % coords.length;
-    const xi = (coords[i].lon !== undefined ? coords[i].lon : coords[i][0]) * 111319;
-    const yi = (coords[i].lat !== undefined ? coords[i].lat : coords[i][1]) * 111319;
-    const xj = (coords[j].lon !== undefined ? coords[j].lon : coords[j][0]) * 111319;
-    const yj = (coords[j].lat !== undefined ? coords[j].lat : coords[j][1]) * 111319;
-    a += xi * yj - xj * yi;
+/* ─── Afficher le polygone avec effet Glow et panel de confirmation ─── */
+function afficherZoneVerrouillee(coords, surface, buildingId) {
+  if(!hxMap) return;
+
+  // Convertir [[lat,lon]] → [[lon,lat]] pour GeoJSON
+  const geojsonCoords = coords.map(c => [c[1], c[0]]);
+  geojsonCoords.push(geojsonCoords[0]);
+
+  const sourceId = 'hx-pending-zone';
+
+  // Supprimer l'ancienne zone temporaire
+  ['hx-pending-zone-fill','hx-pending-zone-line'].forEach(id => {
+    try { if(hxMap.getLayer(id)) hxMap.removeLayer(id); } catch(e){}
+  });
+  try { if(hxMap.getSource(sourceId)) hxMap.removeSource(sourceId); } catch(e){}
+
+  hxMap.addSource(sourceId, { type:'geojson', data:{
+    type:'Feature', geometry:{ type:'Polygon', coordinates:[geojsonCoords] }
+  }});
+
+  // Remplissage doré semi-transparent
+  hxMap.addLayer({ id:'hx-pending-zone-fill', type:'fill', source:sourceId,
+    paint:{ 'fill-color':'#F5A623', 'fill-opacity':0.25 }
+  });
+
+  // Contour pointillé doré animé (CSS glow)
+  hxMap.addLayer({ id:'hx-pending-zone-line', type:'line', source:sourceId,
+    paint:{ 'line-color':'#F5A623', 'line-width':3, 'line-opacity':0.9,
+            'line-dasharray':[5,4] }
+  });
+
+  // Zoomer sur la zone
+  const allLon = geojsonCoords.map(c => c[0]);
+  const allLat = geojsonCoords.map(c => c[1]);
+  hxMap.fitBounds([
+    [Math.min(...allLon), Math.min(...allLat)],
+    [Math.max(...allLon), Math.max(...allLat)]
+  ], { padding:60 });
+
+  // Stocker les données en attente de confirmation
+  _pendingCoords  = coords;
+  _pendingSurface = surface;
+  _pendingBuildId = buildingId;
+
+  // Afficher le panel de confirmation
+  const panel = document.getElementById('lock-confirm-panel');
+  const desc  = document.getElementById('lock-confirm-desc');
+  if(desc) desc.innerHTML = `Surface estimée : <strong style="color:#F5A623">${Math.round(surface)} m²</strong><br>Verrouiller comme adresse officielle HailandX ?`;
+  if(panel) panel.classList.remove('hidden');
+}
+
+/* ─── Confirmer le verrouillage (bouton Oui dans le panel) ─── */
+async function confirmerVerrouillage() {
+  const panel = document.getElementById('lock-confirm-panel');
+  if(panel) panel.classList.add('hidden');
+
+  if(!_pendingCoords) return;
+
+  // Stabiliser le polygone (retirer les pointillés, renforcer le remplissage)
+  if(zoneActive) {
+    zoneActive.setStyle({ dashArray: null, fillOpacity: 0.6, weight: 3 });
   }
-  return Math.abs(a) / 2;
+
+  await enregistrerAdresseHailandX(_pendingCoords, _pendingSurface, _pendingBuildId);
+  _pendingCoords = null;
 }
 
-function _hauteurOSM(tags) {
-  if (tags.height)              return parseFloat(tags.height)              || 8;
-  if (tags['building:levels']) return parseFloat(tags['building:levels']) * 3.2;
-  return 5 + Math.random() * 8;
+/* ─── Annuler le verrouillage (bouton Non dans le panel) ─── */
+function annulerVerrouillage() {
+  const panel = document.getElementById('lock-confirm-panel');
+  if(panel) panel.classList.add('hidden');
+
+  // Supprimer le polygone temporaire
+  ['hx-pending-zone-fill','hx-pending-zone-line'].forEach(id => {
+    try { if(hxMap && hxMap.getLayer(id)) hxMap.removeLayer(id); } catch(e){}
+  });
+  try { if(hxMap && hxMap.getSource('hx-pending-zone')) hxMap.removeSource('hx-pending-zone'); } catch(e){}
+
+  _pendingCoords = null;
+  toast('Verrouillage annulé','');
 }
 
-function _echelle(surface, hauteur) {
-  const b = Math.sqrt(surface) / 10;
-  const h = hauteur / 10;
-  return {
-    x: Math.max(0.4, Math.min(b, 3.2)),
-    y: Math.max(0.4, Math.min(b, 3.2)),
-    z: Math.max(0.6, Math.min(h, 5.5)),
-  };
-}
-
-function _posArbres(bbox) {
-  const pts = [], N = 30;
-  for (let i = 0; i < N; i++) {
-    const x = Math.sin(i * 127.1) * 43758.5453;
-    const y = Math.sin(i * 311.7) * 43758.5453;
-    const fx = x - Math.floor(x);
-    const fy = y - Math.floor(y);
-    pts.push([
-      bbox.minLng + (bbox.maxLng - bbox.minLng) * fx,
-      bbox.minLat + (bbox.maxLat - bbox.minLat) * fy,
-    ]);
+/* ─── Calcul de surface (formule de Gauss/Shoelace °→m²) ─── */
+function calculerSurface(coords) {
+  let area = 0;
+  const n = coords.length;
+  for(let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area += coords[i][0] * coords[j][1];
+    area -= coords[j][0] * coords[i][1];
   }
-  return pts;
+  // 1° lat ≈ 111 319 m ; approximation suffisante pour Conakry
+  return Math.abs(area) * 111319 * 111319 / 2;
+}
+
+/* ─── Enregistrer l'adresse dans Supabase ─── */
+async function enregistrerAdresseHailandX(coords, surface, buildingId) {
+  const userPhone = sess('hx_phone');
+  if(!userPhone) { toast('Connectez-vous pour enregistrer votre adresse','warn'); return; }
+
+  const { error } = await _sb.from('clients').update({
+    hailand_zone       : JSON.stringify(coords),
+    hailand_surface    : Math.round(surface),
+    hailand_building_id: String(buildingId),
+    last_address_update: new Date().toISOString()
+  }).eq('telephone', userPhone);
+
+  if(error) {
+    toast('Erreur d\'enregistrement : ' + error.message, 'error');
+  } else {
+    toast('🔒 Adresse verrouillée sur HailandMap !', 'success');
+    // Mettre à jour le chip dans la barre basse
+    const chip = document.getElementById('locked-address-display');
+    const txt  = document.getElementById('locked-address-text');
+    if(chip) chip.classList.remove('hidden');
+    if(txt)  txt.textContent = `${Math.round(surface)} m²`;
+    // Cacher le bouton "Verrouiller" et remplacer par "Mettre à jour"
+    const btn = document.getElementById('btn-lock-zone');
+    if(btn)  btn.innerHTML = '🔄 Modifier';
+    if(navigator.vibrate) navigator.vibrate([80, 40, 80]);
+  }
+}
+
+/* ─── Vérifier et afficher une adresse déjà verrouillée au démarrage ─── */
+async function verifierAdresseExistante() {
+  const userPhone = sess('hx_phone');
+  if(!userPhone || !hxMap) return;
+
+  const { data, error } = await _sb.from('clients')
+    .select('hailand_zone, hailand_surface')
+    .eq('telephone', userPhone)
+    .maybeSingle();
+
+  if(error || !data || !data.hailand_zone) return;
+
+  try {
+    const coords = JSON.parse(data.hailand_zone);
+    if(!Array.isArray(coords) || coords.length < 3) return;
+
+    // Convertir [[lat,lon],...] → [[lon,lat],...] pour GeoJSON
+    const geojsonCoords = coords.map(c => [c[1], c[0]]);
+    geojsonCoords.push(geojsonCoords[0]); // fermer le polygone
+
+    const sourceId = 'hx-saved-zone';
+    if(hxMap.getSource(sourceId)) {
+      hxMap.getSource(sourceId).setData({
+        type:'Feature', geometry:{ type:'Polygon', coordinates:[geojsonCoords] }
+      });
+    } else {
+      hxMap.addSource(sourceId, { type:'geojson', data:{
+        type:'Feature', geometry:{ type:'Polygon', coordinates:[geojsonCoords] }
+      }});
+
+      // Remplissage
+      hxMap.addLayer({ id:'hx-saved-zone-fill', type:'fill', source:sourceId,
+        paint:{ 'fill-color':'#F5A623', 'fill-opacity':0.18 }
+      });
+      // Contour pulsé
+      hxMap.addLayer({ id:'hx-saved-zone-line', type:'line', source:sourceId,
+        paint:{ 'line-color':'#F5A623', 'line-width':2, 'line-opacity':0.8,
+                'line-dasharray':[3,3] }
+      });
+    }
+
+    // Chip adresse verrouillée
+    const chip = document.getElementById('locked-address-display');
+    const txt  = document.getElementById('locked-address-text');
+    const btn  = document.getElementById('btn-lock-zone');
+    if(chip) chip.classList.remove('hidden');
+    if(txt)  txt.textContent = `${Math.round(data.hailand_surface||0)} m²`;
+    if(btn)  btn.innerHTML   = '🔄';
+
+  } catch(e) { console.warn('Parse hailand_zone:', e); }
 }
 
 // ════════════════════════════════════════════════════
