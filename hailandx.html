@@ -23,11 +23,11 @@
 <link href="https://unpkg.com/maplibre-gl@4.1.0/dist/maplibre-gl.css" rel="stylesheet"/>
 <script src="https://unpkg.com/maplibre-gl@4.1.0/dist/maplibre-gl.js"></script>
 
-<!-- Three.js r134 + GLTFLoader (instance unique – NE PAS réimporter ailleurs) -->
+<!-- Three.js r128 + GLTFLoader (r128 = dernière version avec examples/js/loaders/) -->
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 
 <!-- Fonts -->
 
@@ -4803,31 +4803,36 @@ function _hx_addThreeLayer() {
       _tb_ready = true;
       console.log('[HailandMap] Three.js custom layer prête ✓');
 
-      // Premier pool update après que le GPS a eu le temps de répondre
-      setTimeout(_hx_updatePool, 1500);
+      // Attendre que les tuiles soient chargées (idle) avant le premier pool
+      hxMap.once('idle', () => {
+        console.log('[HailandMap] idle → lancement pool 3D');
+        _hx_updatePool().catch(e => console.warn('[3D pool]', e));
+      });
     },
 
     render(gl, matrix) {
-      if(!_tb_ready || !_tb_scene || _tb_pool.size === 0) return;
+      if(!_tb_ready || !_tb_scene) return;
 
-      // matrix (Float64Array) = matrice proj MapLibre → clip space
-      // Elle intègre déjà zoom, pan, pitch, bearing
-      // On l'injecte directement dans la caméra Three.js
-
-      // Point d'ancrage : position GPS actuelle (ou défaut Conakry)
+      // Point d'ancrage GPS actuel
       const anchor = maplibregl.MercatorCoordinate.fromLngLat(
         { lng: _hxUserLng, lat: _hxUserLat }, 0
       );
       const mpu = anchor.meterInMercatorCoordinateUnits();
 
-      // Transformation : Mercator → espace Three.js
-      // rotX corrige l'axe Y (Three.js Y=haut, Mercator Y=bas)
+      // IMPORTANT: ne JAMAIS appeler multiply() sur mapM directement
+      // car multiply() modifie la matrice en place → bug cumulatif chaque frame
+      // On clone chaque matrice intermédiaire
       const rotX  = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1,0,0), Math.PI/2);
       const scale = new THREE.Matrix4().makeScale(mpu, -mpu, mpu);
       const trans = new THREE.Matrix4().makeTranslation(anchor.x, anchor.y, anchor.z);
-      const mapM  = new THREE.Matrix4().fromArray(matrix);
+      const mapM  = new THREE.Matrix4().fromArray(matrix);  // nouvelle instance à chaque frame
 
-      const finalM = mapM.multiply(trans).multiply(rotX).multiply(scale);
+      // Multiplication correcte: mapM * trans * rotX * scale (sans mutation)
+      const finalM = new THREE.Matrix4()
+        .multiplyMatrices(mapM, trans)
+        .multiply(rotX)
+        .multiply(scale);
+
       _tb_camera.projectionMatrix = finalM;
       _tb_camera.projectionMatrixInverse.copy(finalM).invert();
 
@@ -4857,24 +4862,38 @@ async function _hx_updatePool() {
   _tb_updating = true;
 
   try {
-    // ── 1. Récupérer les features bâtiments dans un bbox autour du GPS ──
-    // On convertit le rayon en degrés approximatifs (1° ≈ 111km)
+    // Attendre que la carte soit idle (tuiles chargées) avant de querier
+    if(!hxMap.isStyleLoaded()) { _tb_updating = false; return; }
+
+    // ── 1. Bbox pixel autour du GPS ──
     const deg = RAYON_METRES / 111320;
-    const bbox = [
-      hxMap.project([_hxUserLng - deg, _hxUserLat + deg]),  // top-left
-      hxMap.project([_hxUserLng + deg, _hxUserLat - deg]),  // bottom-right
+    const cnv = hxMap.getCanvas();
+    const tl  = hxMap.project([_hxUserLng - deg, _hxUserLat + deg]);
+    const br  = hxMap.project([_hxUserLng + deg, _hxUserLat - deg]);
+
+    // Clamp dans les limites du canvas
+    const bboxPixel = [
+      [Math.max(0, Math.min(cnv.width,  tl.x)), Math.max(0, Math.min(cnv.height, tl.y))],
+      [Math.max(0, Math.min(cnv.width,  br.x)), Math.max(0, Math.min(cnv.height, br.y))],
     ];
 
-    // queryRenderedFeatures avec une bbox pixel — limite la zone de recherche
-    const features = hxMap.queryRenderedFeatures(
-      [
-        [Math.max(0, bbox[0].x), Math.max(0, bbox[0].y)],
-        [Math.min(hxMap.getCanvas().width, bbox[1].x), Math.min(hxMap.getCanvas().height, bbox[1].y)]
-      ],
-      { layers: ['hailand-buildings-fallback'] }
-    );
+    // Si la bbox est invalide (GPS hors écran), utiliser le centre de l'écran
+    const validBbox = bboxPixel[0][0] < bboxPixel[1][0] && bboxPixel[0][1] < bboxPixel[1][1];
 
-    if(!features || features.length === 0) { _tb_updating = false; return; }
+    let features = [];
+    try {
+      features = hxMap.queryRenderedFeatures(
+        validBbox ? bboxPixel : undefined,
+        { layers: ['hailand-buildings-fallback'] }
+      );
+    } catch(e) { _tb_updating = false; return; }
+
+    if(!features || features.length === 0) {
+      // Retry dans 1s si pas de features (tuiles pas encore chargées)
+      _tb_updating = false;
+      setTimeout(_hx_schedulePoolUpdate, 1000);
+      return;
+    }
 
     // ── 2. Calculer la distance Haversine pour chaque feature ──
     const candidats = [];
