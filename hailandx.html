@@ -4534,15 +4534,13 @@ async function finaliserVente() {
 
 // ════════════════════════════════════════════════════
 // HAILANDMAP VISION – Carte 3D Nocturne
-// MapLibre GL + Three.js custom layer (sans Threebox)
-// GLB chargés depuis Supabase Storage
-// Architecture : LOD, cache, culling viewport, RAF
+// MapLibre GL + Three.js custom layer
+// Méthode: MercatorCoordinate officielle MapLibre
+// GLB chargés depuis Supabase Storage (cache + LOD)
 // ════════════════════════════════════════════════════
 
-// ── URLs Supabase Storage ──
 const HX_STORAGE = 'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets';
 
-// ── Catalogue assets par catégorie ──
 const HX_ASSETS = {
   suburban: [
     'hailand-assets-kenny_city_suburban/building-type-b.glb',
@@ -4553,12 +4551,10 @@ const HX_ASSETS = {
     'hailand-assets-kenny_city_suburban/building-type-k.glb',
     'hailand-assets-kenny_city_suburban/building-type-l.glb',
     'hailand-assets-kenny_city_suburban/building-type-m.glb',
-    'hailand-assets-kenny_city_suburban/building-type-n.glb',
     'hailand-assets-kenny_city_suburban/building-type-p.glb',
     'hailand-assets-kenny_city_suburban/building-type-r.glb',
     'hailand-assets-kenny_city_suburban/building-type-s.glb',
     'hailand-assets-kenny_city_suburban/building-type-t.glb',
-    'hailand-assets-kenny_city_suburban/building-type-u.glb',
   ],
   industrial: [
     'hailand-assets-kenny_city_industrial/building-a.glb',
@@ -4566,7 +4562,6 @@ const HX_ASSETS = {
     'hailand-assets-kenny_city_industrial/building-l.glb',
     'hailand-assets-kenny_city_industrial/building-m.glb',
     'hailand-assets-kenny_city_industrial/building-n.glb',
-    'hailand-assets-kenny_city_industrial/building-r.glb',
     'hailand-assets-kenny_city_industrial/building-s.glb',
   ],
   skyscraper: [
@@ -4578,22 +4573,18 @@ const HX_ASSETS = {
   generic: [
     'building-a.glb','building-b.glb','building-c.glb','building-d.glb',
     'building-e.glb','building-f.glb','building-g.glb','building-h.glb',
-    'building-i.glb','building-j.glb','building-k.glb','building-l.glb','building-m.glb',
+    'building-i.glb','building-j.glb','building-k.glb','building-l.glb',
   ],
   trees: [
     'hailand-assets-kenny_city_suburban/tree-large.glb',
     'hailand-assets-kenny_city_suburban/tree-small.glb',
   ],
-  streetlight: [
-    'hailand-assets-kaykit_city/streetlight.gltf',
-  ],
 };
 
-function hxAssetUrl(path) { return `${HX_STORAGE}/${path}`; }
+function hxUrl(p){ return `${HX_STORAGE}/${p}`; }
 
-// ── État global carte ──
+// ── État global ──
 let hxMap          = null;
-let hxCustomLayer  = null;   // référence à la custom layer Three.js
 let userMarker     = null;
 let mapWatchId     = null;
 let btqMarkers     = [];
@@ -4601,29 +4592,34 @@ let livreurMarkers = [];
 let mapInitialized = false;
 let mapCurrentMode = '3d';
 
-// ── Cache modèles + scène Three.js (partagés entre frames) ──
-let _hxScene     = null;
-let _hxCamera    = null;
-let _hxRenderer  = null;
-let _hxLoader    = null;
-const _hxCache   = new Map();   // url → THREE.Object3D (géométrie partagée)
-const _hxMeshes  = new Map();   // featureId → { mesh, lng, lat }
-let _hxRAF       = null;
-let _hxReady     = false;       // true une fois la custom layer initialisée
+// ── Three.js state ──
+let _tb_scene    = null;
+let _tb_camera   = null;
+let _tb_renderer = null;
+let _tb_loader   = null;
+let _tb_ready    = false;
+
+// ── Cache + instances actives ──
+const _tb_modelCache = new Map();  // url → gltf.scene original (jamais modifié)
+const _tb_active     = new Map();  // featId → THREE.Group dans la scène
+let   _tb_raf        = null;
 
 const MAP_STYLE_DARK = 'https://tiles.basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 const MAP_STYLE_SAT  = 'https://tiles.basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
 
-/* ════════════════════════════════════
-   OUVRIR / FERMER LA CARTE
-════════════════════════════════════ */
+// ── Facteur d'échelle Mercator à l'équateur (MapLibre normalise à 0..1) ──
+const MERC_WORLD = 2 * Math.PI * 6378137; // circonférence Terre en mètres
+
+/* ════════════════════════════════
+   OUVRIR LA CARTE
+════════════════════════════════ */
 async function ouvrirHailandMap() {
   const overlay = document.getElementById('hailand-map-overlay');
   if(!overlay) return;
   overlay.classList.remove('hidden');
 
   if(!mapInitialized) {
-    await _initMapLibre();
+    await _hx_initMap();
     mapInitialized = true;
   } else {
     hxMap?.resize();
@@ -4632,24 +4628,23 @@ async function ouvrirHailandMap() {
   if(navigator.geolocation) {
     mapWatchId = navigator.geolocation.watchPosition(
       pos => actualiserPositionClient(pos.coords.latitude, pos.coords.longitude),
-      err => console.warn('GPS carte:', err),
+      err  => console.warn('[GPS]', err),
       { enableHighAccuracy:true, maximumAge:4000, timeout:12000 }
     );
   }
-
   _demarrerHorloge();
   await chargerBoutiquiersHailandX();
   await chargerStatsCarte();
   await verifierAdresseExistante();
 }
 
-/* ════════════════════════════════════
-   INIT MAPLIBRE
-════════════════════════════════════ */
-function _initMapLibre() {
+/* ════════════════════════════════
+   INITIALISATION MAPLIBRE
+════════════════════════════════ */
+function _hx_initMap() {
   return new Promise(resolve => {
     const container = document.getElementById('hailand-map-container');
-    if(!container) { resolve(); return; }
+    if(!container){ resolve(); return; }
 
     hxMap = new maplibregl.Map({
       container: 'hailand-map-container',
@@ -4673,64 +4668,62 @@ function _initMapLibre() {
         (k === 'carto' || k === 'openmaptiles' || k.toLowerCase().includes('tile'))
       ) || 'carto';
 
-      const layers = hxMap.getStyle().layers || [];
-      const availSL = new Set(layers.filter(l => l.source === srcName).map(l => l['source-layer']));
+      const allLayers = hxMap.getStyle().layers || [];
+      const availSL = new Set(allLayers.filter(l => l.source === srcName).map(l => l['source-layer']));
 
       const SL = {
-        building:  availSL.has('building')      ? 'building'      : null,
-        transport: availSL.has('transportation') ? 'transportation': availSL.has('road') ? 'road' : null,
-        landuse:   availSL.has('landuse')        ? 'landuse'       : availSL.has('landcover') ? 'landcover' : null,
-        water:     availSL.has('water')          ? 'water'         : null,
-        waterway:  availSL.has('waterway')       ? 'waterway'      : null,
+        building:  availSL.has('building')       ? 'building'       : null,
+        transport: availSL.has('transportation')  ? 'transportation' : availSL.has('road') ? 'road' : null,
+        landuse:   availSL.has('landuse')         ? 'landuse'        : availSL.has('landcover') ? 'landcover' : null,
+        water:     availSL.has('water')           ? 'water'          : null,
+        waterway:  availSL.has('waterway')        ? 'waterway'       : null,
       };
 
-      const HEIGHT = ['coalesce',['get','render_height'],['get','height'],['*',['to-number',['get','building:levels'],0],3],5];
-      const BASE   = ['coalesce',['get','render_min_height'],['get','min_height'],0];
+      const HEIGHT = ['coalesce',['get','render_height'],['get','height'],
+                      ['*',['to-number',['get','building:levels'],0],3], 5];
+      const BASE   = ['coalesce',['get','render_min_height'],['get','min_height'], 0];
 
       // Fond sombre
       try {
-        layers.filter(l=>l.type==='background').forEach(l=>{
-          try{hxMap.setPaintProperty(l.id,'background-color','#0c1018');}catch(e){}
+        allLayers.filter(l=>l.type==='background').forEach(l=>{
+          try{ hxMap.setPaintProperty(l.id,'background-color','#0c1018'); }catch(e){}
         });
-        layers.filter(l=>l['source-layer']==='landuse'||l['source-layer']==='landcover').forEach(l=>{
-          try{hxMap.setPaintProperty(l.id,'fill-color','#141a20');}catch(e){}
-          try{hxMap.setPaintProperty(l.id,'fill-opacity',1);}catch(e){}
+        allLayers.filter(l=>l['source-layer']==='landuse'||l['source-layer']==='landcover').forEach(l=>{
+          try{ hxMap.setPaintProperty(l.id,'fill-color','#141a20'); }catch(e){}
+          try{ hxMap.setPaintProperty(l.id,'fill-opacity',1); }catch(e){}
         });
       }catch(e){}
 
       // Masquer fill-extrusion du style de base
-      layers.forEach(l=>{
+      allLayers.forEach(l=>{
         if(l.type==='fill-extrusion' && !(l.id||'').startsWith('hailand-') && l.id!=='building-shadow'){
-          try{hxMap.setLayoutProperty(l.id,'visibility','none');}catch(e){}
+          try{ hxMap.setLayoutProperty(l.id,'visibility','none'); }catch(e){}
         }
       });
 
       // Couches vectorielles
-      _ajouterSol(srcName, SL.landuse);
-      _ajouterCouchesRoutes(srcName, SL.transport);
-      _ajouterCouchesVegetation(srcName, SL.landuse);
-      _ajouterCouchesEau(srcName, SL.water, SL.waterway);
-      _ajouterLampadaires2D();
+      _hx_addRoutes(srcName, SL.transport);
+      _hx_addVegetation(srcName, SL.landuse);
+      _hx_addWater(srcName, SL.water, SL.waterway);
+      _hx_addStreetLights();
+      _hx_addFallbackBuildings(srcName, SL.building, HEIGHT, BASE);
 
-      // fill-extrusion fallback (visible à tout zoom, s'efface à zoom≥17 quand GLB prennent le relais)
-      _ajouterFillExtrusionFallback(srcName, SL.building, HEIGHT, BASE);
+      // Custom layer Three.js (GLB) — ajoutée EN DERNIER pour être au-dessus
+      _hx_addThreeLayer();
 
-      // Custom layer Three.js pour les GLB
-      _ajouterCustomLayer3D(srcName, SL.building);
+      _hx_setAmbiance();
 
-      _configurerAmbiance();
-
+      hxMap.on('move',    _hx_onMove);
+      hxMap.on('moveend', _hx_onMoveEnd);
+      hxMap.on('zoomend', _hx_onMoveEnd);
       hxMap.on('move', () => {
         const z = document.getElementById('map-zoom-val');
         if(z) z.textContent = Math.round(hxMap.getZoom());
-        _onMapMove();
       });
       hxMap.on('pitch', () => {
         const p = document.getElementById('map-pitch-val');
         if(p) p.textContent = Math.round(hxMap.getPitch())+'°';
       });
-      hxMap.on('moveend', _onMoveEnd);
-      hxMap.on('zoomend', _onMoveEnd);
 
       resolve();
     });
@@ -4739,222 +4732,248 @@ function _initMapLibre() {
   });
 }
 
-/* ════════════════════════════════════
-   CUSTOM LAYER THREE.JS (GLB)
-   Rendu dans le même contexte WebGL que MapLibre
-   → zéro overhead de synchronisation
-════════════════════════════════════ */
-function _ajouterCustomLayer3D(srcName, slBuilding) {
-  if(!window.THREE || !window.THREE.GLTFLoader) {
-    console.warn('[HailandMap] Three.js ou GLTFLoader absent – GLB désactivés');
+/* ════════════════════════════════
+   CUSTOM LAYER THREE.JS
+   Utilise maplibregl.MercatorCoordinate pour
+   positionner les objets dans l'espace MapLibre.
+   C'est la méthode officielle des exemples MapLibre.
+════════════════════════════════ */
+function _hx_addThreeLayer() {
+  if(!window.THREE || !THREE.GLTFLoader) {
+    console.error('[HailandMap] Three.js ou GLTFLoader manquant – vérifier les CDN');
     return;
   }
 
-  hxCustomLayer = {
-    id: 'hailand-3d-models',
+  // Point de référence : centre de Conakry
+  // Tous les modèles sont positionnés en mètres relatifs à ce point
+  const CENTER_LNG = -13.677;
+  const CENTER_LAT =  9.537;
+
+  // Coordonnée Mercator du centre — c'est l'origine de notre scène Three.js
+  const originMerc = maplibregl.MercatorCoordinate.fromLngLat(
+    { lng: CENTER_LNG, lat: CENTER_LAT }, 0
+  );
+
+  // Facteur: 1 unité Three.js = combien de mètres à cette latitude
+  const metersPerUnit = originMerc.meterInMercatorCoordinateUnits();
+
+  const customLayer = {
+    id: 'hailand-3d-glb',
     type: 'custom',
     renderingMode: '3d',
 
     onAdd(map, gl) {
-      _hxLoader = new THREE.GLTFLoader();
+      _tb_loader = new THREE.GLTFLoader();
+      _tb_scene  = new THREE.Scene();
+      _tb_camera = new THREE.Camera();
 
-      // Scène partagée
-      _hxScene  = new THREE.Scene();
-      _hxCamera = new THREE.Camera();
-
-      // Lumières
-      _hxScene.add(new THREE.AmbientLight(0xFFE8C0, 0.55));
+      // Lumières Three.js
+      _tb_scene.add(new THREE.AmbientLight(0xFFE8C0, 0.6));
       const sun = new THREE.DirectionalLight(0xFFD580, 0.9);
-      sun.position.set(-1, 2, 1.5);
-      _hxScene.add(sun);
-      const moon = new THREE.DirectionalLight(0x8090C0, 0.25);
-      moon.position.set(1, 3, -1);
-      _hxScene.add(moon);
+      sun.position.set(-1, 2, 1.5).normalize();
+      _tb_scene.add(sun);
+      const moon = new THREE.DirectionalLight(0x8090C0, 0.3);
+      moon.position.set(1, 3, -1).normalize();
+      _tb_scene.add(moon);
 
-      // Renderer partagé avec MapLibre (même gl context)
-      _hxRenderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: false });
-      _hxRenderer.autoClear = false;
-      _hxRenderer.outputEncoding = THREE.sRGBEncoding;
+      // Renderer partagé avec le canvas MapLibre
+      _tb_renderer = new THREE.WebGLRenderer({
+        canvas:   map.getCanvas(),
+        context:  gl,
+        antialias: false,
+      });
+      _tb_renderer.autoClear   = false;
+      _tb_renderer.shadowMap.enabled = false;
 
-      _hxReady = true;
-      // Premier chargement différé
-      setTimeout(_chargerModeles3D, 500);
+      _tb_ready = true;
+      console.log('[HailandMap] Custom layer Three.js initialisée ✓');
+
+      // Lancer le premier chargement après stabilisation
+      setTimeout(_hx_loadVisibleBuildings, 800);
     },
 
     render(gl, matrix) {
-      if(!_hxReady || !_hxScene || _hxMeshes.size === 0) return;
+      if(!_tb_ready || !_tb_scene) return;
 
-      // Construire la matrice de projection MapLibre → Three.js
-      const m = new THREE.Matrix4().fromArray(matrix);
-      _hxCamera.projectionMatrix = m;
-      _hxCamera.projectionMatrixInverse.copy(m).invert();
+      // matrix = Float64Array[16] — matrice de projection MapLibre
+      // Elle transforme les coordonnées Mercator (0..1) en clip space WebGL
+      // On la passe directement comme matrice de projection+vue combinée à Three.js
 
-      _hxRenderer.resetState();
-      _hxRenderer.render(_hxScene, _hxCamera);
+      // Matrice de rotation/translation du point d'origine vers le monde Three.js
+      const rotX = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1,0,0), Math.PI/2);
+      const scale = new THREE.Matrix4().makeScale(metersPerUnit, -metersPerUnit, metersPerUnit);
+
+      // Translation: origine Mercator → position dans le clip space
+      const translateMerc = new THREE.Matrix4().makeTranslation(
+        originMerc.x, originMerc.y, originMerc.z
+      );
+
+      // Matrice MapLibre
+      const mapMatrix = new THREE.Matrix4().fromArray(matrix);
+
+      // Matrice finale = mapMatrix * translateMerc * rotX * scale
+      const finalMatrix = mapMatrix
+        .multiply(translateMerc)
+        .multiply(rotX)
+        .multiply(scale);
+
+      _tb_camera.projectionMatrix = finalMatrix;
+      _tb_camera.projectionMatrixInverse.copy(finalMatrix).invert();
+
+      _tb_renderer.resetState();
+      _tb_renderer.render(_tb_scene, _tb_camera);
       hxMap.triggerRepaint();
     }
   };
 
-  hxMap.addLayer(hxCustomLayer);
+  hxMap.addLayer(customLayer);
 }
 
-/* ════════════════════════════════════
-   CHARGEMENT ET PLACEMENT GLB
-════════════════════════════════════ */
-async function _chargerModeles3D() {
-  if(!_hxReady || !hxMap) return;
+/* ════════════════════════════════
+   CHARGER LES BÂTIMENTS VISIBLES
+════════════════════════════════ */
+async function _hx_loadVisibleBuildings() {
+  if(!_tb_ready || !hxMap) return;
 
   const zoom = hxMap.getZoom();
 
-  // En dessous de zoom 15 → fill-extrusion suffisent, on n'instancie pas de GLB
+  // En dessous de zoom 15 → les GLB sont trop petits, fill-extrusion suffit
   if(zoom < 15) {
-    _nettoyerMeshes();
+    _hx_clearAllMeshes();
     return;
   }
 
-  // Récupérer les features bâtiments visibles dans le viewport
-  const features = hxMap.queryRenderedFeatures(undefined, {
-    layers: ['hailand-buildings-fallback']
-  });
+  const MAX_MODELS = zoom >= 17 ? 40 : zoom >= 16 ? 20 : 10;
 
-  // Limite dure pour la fluidité mobile
-  const MAX = zoom >= 17 ? 50 : zoom >= 16 ? 30 : 15;
-  const toProcess = features.slice(0, MAX);
+  // Récupérer features visibles depuis la couche fallback
+  let features = [];
+  try {
+    features = hxMap.queryRenderedFeatures(undefined, {
+      layers: ['hailand-buildings-fallback']
+    });
+  } catch(e) { return; }
 
-  const idsVus = new Set();
+  if(!features || features.length === 0) return;
 
-  for(const feat of toProcess) {
-    const id = _featId(feat);
-    idsVus.add(id);
-    if(_hxMeshes.has(id)) continue; // déjà instancié
+  const toLoad = features.slice(0, MAX_MODELS);
+  const seenIds = new Set();
+
+  for(const feat of toLoad) {
+    const fid = _hx_featId(feat);
+    seenIds.add(fid);
+    if(_tb_active.has(fid)) continue;
 
     const geom = feat.geometry;
     if(!geom || geom.type !== 'Polygon') continue;
-
     const ring = geom.coordinates[0];
-    const centroid = _centroid(ring);
-    if(!centroid) continue;
+    const ctr  = _hx_centroid(ring);
+    if(!ctr) continue;
 
-    const heightRaw = feat.properties?.height
-      || feat.properties?.render_height
-      || (feat.properties?.['building:levels']||0) * 3
-      || 5;
-    const height = Math.max(parseFloat(heightRaw)||5, 3);
-    const area   = _area(ring);
+    const h = Math.max(
+      parseFloat(feat.properties?.height || feat.properties?.render_height ||
+      (feat.properties?.['building:levels']||0)*3 || 5), 3
+    );
+    const a = _hx_area(ring);
+    const modelPath = _hx_pickModel(h, a);
 
-    const modelPath = _choisirModele(height, area);
-    const url = hxAssetUrl(modelPath);
+    // Réserver la place dans la map pour éviter les chargements doublon
+    _tb_active.set(fid, null);
 
-    // Marque immédiatement pour éviter les doublons lors du chargement async
-    _hxMeshes.set(id, null);
-
-    // Chargement non bloquant
-    _chargerEtPlacerGLB(url, centroid, height, area, id).catch(() => {
-      _hxMeshes.delete(id);
-    });
+    _hx_loadAndPlace(hxUrl(modelPath), ctr, h, a, fid)
+      .catch(() => _tb_active.delete(fid));
   }
 
-  // Nettoyer les meshes hors viewport
-  for(const [id, entry] of _hxMeshes) {
-    if(!idsVus.has(id) && entry !== null) {
-      _hxScene.remove(entry.mesh);
-      _hxMeshes.delete(id);
+  // Supprimer les meshes hors viewport
+  for(const [fid, group] of _tb_active) {
+    if(!seenIds.has(fid)) {
+      if(group) _tb_scene.remove(group);
+      _tb_active.delete(fid);
     }
   }
 
   hxMap.triggerRepaint();
 }
 
-/* ─── Charger un GLB et le placer sur la carte ─── */
-async function _chargerEtPlacerGLB(url, lngLat, heightM, areaM2, featId) {
-  if(!_hxReady || !_hxScene || !_hxLoader) return;
+/* ─── Charger un GLB et le placer dans la scène ─── */
+async function _hx_loadAndPlace(url, lngLat, heightM, areaM2, fid) {
+  if(!_tb_scene || !_tb_loader) return;
 
-  let gltf;
-  if(_hxCache.has(url)) {
-    gltf = _hxCache.get(url);
+  let gltfScene;
+
+  if(_tb_modelCache.has(url)) {
+    gltfScene = _tb_modelCache.get(url);
   } else {
-    gltf = await new Promise((resolve, reject) => {
-      _hxLoader.load(url, resolve, undefined, reject);
+    const gltf = await new Promise((res, rej) => {
+      _tb_loader.load(url, res, undefined, rej);
     });
-    _hxCache.set(url, gltf);
+    gltfScene = gltf.scene;
+    _tb_modelCache.set(url, gltfScene);
   }
 
-  // Cloner la scène pour ne pas modifier le cache
-  const mesh = gltf.scene.clone(true);
+  // Cloner pour avoir une instance indépendante
+  const group = gltfScene.clone(true);
 
-  // Calculer l'échelle cible
-  const bbox = new THREE.Box3().setFromObject(mesh);
-  const size = new THREE.Vector3();
-  bbox.getSize(size);
-  const modelH = size.y > 0 ? size.y : 1;
-  const modelW = Math.max(size.x, size.z) > 0 ? Math.max(size.x, size.z) : 1;
+  // ── Calculer l'échelle en MÈTRES ──
+  // Dans notre scène, 1 unité = 1 mètre (grâce au metersPerUnit dans la matrice)
+  const bbox = new THREE.Box3().setFromObject(group);
+  const sz   = new THREE.Vector3();
+  bbox.getSize(sz);
+  const mH = sz.y > 0.01 ? sz.y : 1;
+  const mW = Math.max(sz.x, sz.z) > 0.01 ? Math.max(sz.x, sz.z) : 1;
 
-  const targetH = Math.max(heightM, 3);
-  const targetW = Math.max(Math.sqrt(areaM2||50), 5);
-  const s = Math.min(targetH / modelH, (targetW / modelW) * 1.4);
-  mesh.scale.set(s, s, s);
+  const tH = Math.max(heightM, 3);
+  const tW = Math.max(Math.sqrt(Math.max(areaM2, 20)), 5);
+  const s  = Math.min(tH / mH, (tW / mW) * 1.5);
+  group.scale.set(s, s, s);
 
-  // Rotation aléatoire parmi 4 orientations
-  mesh.rotation.set(0, [0, Math.PI/2, Math.PI, 3*Math.PI/2][Math.floor(Math.random()*4)], 0);
+  // Rotation aléatoire parmi 4 orientations cardinales
+  group.rotation.z = [0, Math.PI/2, Math.PI, 3*Math.PI/2][Math.floor(Math.random()*4)];
 
-  // Ajouter une lumière de fenêtre (PointLight orange intégré au mesh)
-  const winLight = new THREE.PointLight(0xFFD080, 0.5, 40);
-  winLight.position.set(0, targetH * 0.4, 0);
-  mesh.add(winLight);
+  // ── Position en mètres depuis le centre de référence ──
+  // On calcule la distance en mètres entre le centroïde et le centre Conakry
+  const CENTER_LNG = -13.677, CENTER_LAT = 9.537;
+  const R = 6378137; // rayon Terre mètres
+  const dLng = (lngLat[0] - CENTER_LNG) * Math.PI / 180;
+  const dLat = (lngLat[1] - CENTER_LAT) * Math.PI / 180;
+  const mLat = (CENTER_LAT + lngLat[1]) / 2 * Math.PI / 180;
+  const dx =  dLng * R * Math.cos(mLat);
+  const dy = -dLat * R;  // négatif car Y est inversé en Three.js après rotX
 
-  // Convertir coordonnées géographiques → position Three.js via la matrice MapLibre
-  mesh.position.copy(_lngLatToWorld(lngLat[0], lngLat[1], 0));
+  group.position.set(dx, dy, 0);
 
-  _hxScene.add(mesh);
-  _hxMeshes.set(featId, { mesh, lng: lngLat[0], lat: lngLat[1] });
+  // Lumière de fenêtre intégrée
+  const wl = new THREE.PointLight(0xFFD080, 0.4, 50);
+  wl.position.set(0, tH * 0.4, 0);
+  group.add(wl);
+
+  _tb_scene.add(group);
+  _tb_active.set(fid, group);
   hxMap.triggerRepaint();
 }
 
-/* ─── Convertir [lng, lat, alt] → THREE.Vector3 dans l'espace monde MapLibre ─── */
-function _lngLatToWorld(lng, lat, alt) {
-  // MapLibre utilise une projection Mercator normalisée
-  // La matrice de la custom layer transforme les coordonnées Mercator en clip space
-  // On calcule directement la position en coordonnées Mercator (0..1)
-  const mercX = (lng + 180) / 360;
-  const mercY = (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2;
-  const scale  = 1 << Math.floor(hxMap.getZoom());
-  return new THREE.Vector3(
-    mercX * scale * 512 - (((hxMap.getCenter().lng + 180) / 360) * scale * 512),
-    mercY * scale * 512 - (((1 - Math.log(Math.tan(hxMap.getCenter().lat * Math.PI/180) + 1/Math.cos(hxMap.getCenter().lat * Math.PI/180))/Math.PI)/2) * scale * 512),
-    alt
-  );
+/* ─── Vider toute la scène ─── */
+function _hx_clearAllMeshes() {
+  if(!_tb_scene) return;
+  for(const [, g] of _tb_active) { if(g) _tb_scene.remove(g); }
+  _tb_active.clear();
 }
 
-/* ─── Vider tous les meshes de la scène ─── */
-function _nettoyerMeshes() {
-  if(!_hxScene) return;
-  for(const [, entry] of _hxMeshes) {
-    if(entry) _hxScene.remove(entry.mesh);
-  }
-  _hxMeshes.clear();
+/* ─── Callbacks mouvement ─── */
+function _hx_onMoveEnd() {
+  if(_tb_raf) cancelAnimationFrame(_tb_raf);
+  _tb_raf = requestAnimationFrame(() => _hx_loadVisibleBuildings().catch(()=>{}));
 }
 
-/* ─── LOD : recalculer les meshes à chaque fin de mouvement ─── */
-function _onMoveEnd() {
-  if(_hxRAF) cancelAnimationFrame(_hxRAF);
-  _hxRAF = requestAnimationFrame(() => _chargerModeles3D().catch(()=>{}));
+function _hx_onMove() {
+  // Pas besoin de recalculer les positions pendant le mouvement :
+  // la matrice MapLibre passée à render() gère ça automatiquement
 }
 
-function _onMapMove() {
-  // Pendant le mouvement, mettre à jour les positions des meshes existants
-  // pour qu'ils restent collés à la carte
-  if(!_hxScene || _hxMeshes.size === 0) return;
-  for(const [, entry] of _hxMeshes) {
-    if(!entry) continue;
-    entry.mesh.position.copy(_lngLatToWorld(entry.lng, entry.lat, 0));
-  }
-}
-
-/* ════════════════════════════════════
+/* ════════════════════════════════
    COUCHE FALLBACK FILL-EXTRUSION
-   (visible à zoom < 17, s'efface quand GLB prennent le relais)
-════════════════════════════════════ */
-function _ajouterFillExtrusionFallback(src, sl, HEIGHT, BASE) {
+   (s'efface progressivement à zoom≥16 quand GLB apparaissent)
+════════════════════════════════ */
+function _hx_addFallbackBuildings(src, sl, HEIGHT, BASE) {
   if(!sl || hxMap.getLayer('building-shadow')) return;
 
   hxMap.addLayer({
@@ -4964,7 +4983,8 @@ function _ajouterFillExtrusionFallback(src, sl, HEIGHT, BASE) {
     paint:{
       'fill-extrusion-color':'#020408',
       'fill-extrusion-height':HEIGHT,'fill-extrusion-base':0,
-      'fill-extrusion-opacity':0.5,'fill-extrusion-translate':[3,4]
+      'fill-extrusion-opacity':0.45,
+      'fill-extrusion-translate':[3,4]
     }
   });
 
@@ -4975,14 +4995,15 @@ function _ajouterFillExtrusionFallback(src, sl, HEIGHT, BASE) {
     paint:{
       'fill-extrusion-color':[
         'interpolate',['linear'],HEIGHT,
-        0,'#3d2e18',4,'#4e3a20',8,'#5a4228',15,'#634a2e',30,'#705438',60,'#7a6040'
+        0,'#3d2e18',4,'#4e3a20',8,'#5a4228',
+        15,'#634a2e',30,'#705438',60,'#7a6040'
       ],
       'fill-extrusion-height':HEIGHT,
       'fill-extrusion-base':BASE,
-      // Disparaît progressivement quand les GLB s'affichent (zoom≥16)
+      // S'efface quand les GLB s'affichent
       'fill-extrusion-opacity':[
         'interpolate',['linear'],['zoom'],
-        14,1.0, 16,0.7, 17,0.15, 17.5,0.0
+        13,1.0, 15,0.95, 16,0.5, 17,0.0
       ],
       'fill-extrusion-vertical-gradient':true
     }
@@ -4996,7 +5017,7 @@ function _ajouterFillExtrusionFallback(src, sl, HEIGHT, BASE) {
       'fill-extrusion-color':['interpolate',['linear'],HEIGHT,0,'#1e1a14',10,'#252018',25,'#2e2820'],
       'fill-extrusion-height':['+',HEIGHT,0.4],
       'fill-extrusion-base':HEIGHT,
-      'fill-extrusion-opacity':['interpolate',['linear'],['zoom'],14,1.0,16,0.6,17.5,0.0]
+      'fill-extrusion-opacity':['interpolate',['linear'],['zoom'],13,1.0,16,0.5,17,0.0]
     }
   });
 
@@ -5007,59 +5028,40 @@ function _ajouterFillExtrusionFallback(src, sl, HEIGHT, BASE) {
     filter:['!=',['get','hide_3d'],true],
     paint:{
       'fill-color':'#FFD580',
-      'fill-opacity':['interpolate',['linear'],['zoom'],13,0,15,0.05,17,0.14,19,0.20]
+      'fill-opacity':['interpolate',['linear'],['zoom'],13,0,15,0.05,17,0.15,19,0.22]
     }
   });
 }
 
-/* ════════════════════════════════════
-   SOL
-════════════════════════════════════ */
-function _ajouterSol(src, sl) {
-  if(!sl) return;
-  // Teinte de sol entre les bâtiments (zones résidentielles)
-  try {
-    hxMap.getStyle().layers
-      .filter(l => l['source-layer']==='landuse' || l['source-layer']==='landcover')
-      .forEach(l => {
-        try{hxMap.setPaintProperty(l.id,'fill-color','#141a20');}catch(e){}
-        try{hxMap.setPaintProperty(l.id,'fill-opacity',1);}catch(e){}
-      });
-  }catch(e){}
-}
-
-/* ════════════════════════════════════
+/* ════════════════════════════════
    ROUTES
-════════════════════════════════════ */
-function _ajouterCouchesRoutes(src, sl) {
+════════════════════════════════ */
+function _hx_addRoutes(src, sl) {
   if(!sl || hxMap.getLayer('hailand-roads-glow')) return;
-
   const MAIN  = ['in',['get','class'],['literal',['primary','secondary','trunk','motorway']]];
   const MINOR = ['in',['get','class'],['literal',['minor','residential','service','track','path']]];
 
-  hxMap.addLayer({id:'hailand-roads-glow',type:'line',source:src,'source-layer':sl,filter:MAIN,
+  hxMap.addLayer({id:'hailand-roads-glow', type:'line',source:src,'source-layer':sl,filter:MAIN,
     paint:{'line-color':'rgba(245,166,35,0.20)','line-width':16,'line-blur':10}});
-  hxMap.addLayer({id:'hailand-roads-main',type:'line',source:src,'source-layer':sl,filter:MAIN,
+  hxMap.addLayer({id:'hailand-roads-main', type:'line',source:src,'source-layer':sl,filter:MAIN,
     paint:{'line-color':'#1c2235','line-width':9}});
-  hxMap.addLayer({id:'hailand-roads-edge',type:'line',source:src,'source-layer':sl,filter:MAIN,
+  hxMap.addLayer({id:'hailand-roads-edge', type:'line',source:src,'source-layer':sl,filter:MAIN,
     paint:{'line-color':'rgba(245,166,35,0.28)','line-width':1.5,'line-gap-width':9}});
-  hxMap.addLayer({id:'hailand-roads-dash',type:'line',source:src,'source-layer':sl,filter:MAIN,
+  hxMap.addLayer({id:'hailand-roads-dash', type:'line',source:src,'source-layer':sl,filter:MAIN,
     paint:{'line-color':'rgba(255,255,255,0.50)','line-width':1.2,'line-dasharray':[4,6]}});
-
-  hxMap.addLayer({id:'hailand-roads-minor-glow',type:'line',source:src,'source-layer':sl,filter:MINOR,
+  hxMap.addLayer({id:'hailand-roads-minor-glow', type:'line',source:src,'source-layer':sl,filter:MINOR,
     paint:{'line-color':'rgba(220,140,20,0.12)','line-width':8,'line-blur':5}});
-  hxMap.addLayer({id:'hailand-roads-minor',type:'line',source:src,'source-layer':sl,filter:MINOR,
+  hxMap.addLayer({id:'hailand-roads-minor', type:'line',source:src,'source-layer':sl,filter:MINOR,
     paint:{'line-color':'#181e2e','line-width':5}});
-  hxMap.addLayer({id:'hailand-roads-minor-edge',type:'line',source:src,'source-layer':sl,filter:MINOR,
+  hxMap.addLayer({id:'hailand-roads-minor-edge', type:'line',source:src,'source-layer':sl,filter:MINOR,
     paint:{'line-color':'rgba(220,140,20,0.18)','line-width':0.8,'line-gap-width':5}});
 }
 
-/* ════════════════════════════════════
+/* ════════════════════════════════
    VÉGÉTATION
-════════════════════════════════════ */
-function _ajouterCouchesVegetation(src, sl) {
+════════════════════════════════ */
+function _hx_addVegetation(src, sl) {
   if(!sl || hxMap.getLayer('hailand-parks')) return;
-
   hxMap.addLayer({
     id:'hailand-parks',type:'fill',source:src,'source-layer':sl,
     filter:['in',['get','class'],['literal',['wood','forest','grass','meadow','park','scrub','wetland','recreation_ground']]],
@@ -5080,10 +5082,10 @@ function _ajouterCouchesVegetation(src, sl) {
   });
 }
 
-/* ════════════════════════════════════
+/* ════════════════════════════════
    EAU
-════════════════════════════════════ */
-function _ajouterCouchesEau(src, slW, slWW) {
+════════════════════════════════ */
+function _hx_addWater(src, slW, slWW) {
   hxMap.getStyle().layers
     .filter(l=>l.type==='fill'&&(l['source-layer']==='water'||(l.id||'').includes('water')))
     .forEach(l=>{
@@ -5096,14 +5098,15 @@ function _ajouterCouchesEau(src, slW, slWW) {
   }
   if(slWW&&!hxMap.getLayer('hailand-waterway-glow')){
     try{hxMap.addLayer({id:'hailand-waterway-glow',type:'line',source:src,'source-layer':slWW,
-      paint:{'line-color':'rgba(96,165,250,0.16)','line-width':['interpolate',['linear'],['zoom'],10,1,14,3,17,7],'line-blur':1.5}});}catch(e){}
+      paint:{'line-color':'rgba(96,165,250,0.16)',
+             'line-width':['interpolate',['linear'],['zoom'],10,1,14,3,17,7],'line-blur':1.5}});}catch(e){}
   }
 }
 
-/* ════════════════════════════════════
-   LAMPADAIRES 2D (GeoJSON circles)
-════════════════════════════════════ */
-function _ajouterLampadaires2D() {
+/* ════════════════════════════════
+   LAMPADAIRES 2D
+════════════════════════════════ */
+function _hx_addStreetLights() {
   if(hxMap.getSource('hx-lampadaires')) return;
   const axes = [
     [[-13.6795,9.5290],[-13.6780,9.5320],[-13.6760,9.5360],[-13.6745,9.5395]],
@@ -5112,13 +5115,15 @@ function _ajouterLampadaires2D() {
     [[-13.6640,9.5460],[-13.6620,9.5478],[-13.6600,9.5495],[-13.6580,9.5512]],
   ];
   const features = [];
-  axes.forEach(axe => {
+  axes.forEach(axe=>{
     for(let i=0;i<axe.length-1;i++){
       const [x1,y1]=axe[i],[x2,y2]=axe[i+1];
       const steps=Math.ceil(Math.hypot(x2-x1,y2-y1)/0.0004);
       for(let s=0;s<=steps;s++){
         const t=s/steps, off=0.00008*(s%2===0?1:-1);
-        features.push({type:'Feature',geometry:{type:'Point',coordinates:[x1+(x2-x1)*t+off,y1+(y2-y1)*t+off]},properties:{}});
+        features.push({type:'Feature',
+          geometry:{type:'Point',coordinates:[x1+(x2-x1)*t+off,y1+(y2-y1)*t+off]},
+          properties:{}});
       }
     }
   });
@@ -5129,30 +5134,30 @@ function _ajouterLampadaires2D() {
     paint:{'circle-color':'#FFE060','circle-radius':2.2,'circle-opacity':0.95,'circle-pitch-alignment':'map'}});
 }
 
-/* ════════════════════════════════════
-   AMBIANCE LUMINEUSE MAPLIBRE
-════════════════════════════════════ */
-function _configurerAmbiance() {
+/* ════════════════════════════════
+   AMBIANCE
+════════════════════════════════ */
+function _hx_setAmbiance() {
   try{hxMap.setLight({anchor:'viewport',color:'#FFE8A0',intensity:0.60,position:[1.5,225,45]});}catch(e){}
   try{hxMap.setFog({range:[2,18],color:'#080c14','horizon-blend':0.04});}catch(e){}
 }
 
-/* ════════════════════════════════════
-   HELPERS GÉOMÉTRIQUES
-════════════════════════════════════ */
-function _featId(feat) {
-  return feat.id || feat.properties?.osm_id || feat.properties?.id
-    || (feat.geometry?.coordinates?.[0]?.[0]?.join('_')) || Math.random().toString(36);
+/* ════════════════════════════════
+   HELPERS
+════════════════════════════════ */
+function _hx_featId(f){
+  return String(f.id ?? f.properties?.osm_id ?? f.properties?.id
+    ?? (f.geometry?.coordinates?.[0]?.[0]?.toString()) ?? Math.random());
 }
 
-function _centroid(ring) {
+function _hx_centroid(ring){
   if(!ring||ring.length<3) return null;
   let x=0,y=0;
   ring.forEach(([a,b])=>{x+=a;y+=b;});
   return [x/ring.length, y/ring.length];
 }
 
-function _area(ring) {
+function _hx_area(ring){
   if(!ring||ring.length<3) return 100;
   let a=0;
   for(let i=0,j=ring.length-1;i<ring.length;j=i++){
@@ -5161,7 +5166,7 @@ function _area(ring) {
   return Math.abs(a/2)*111319*111319;
 }
 
-function _choisirModele(h, a) {
+function _hx_pickModel(h,a){
   if(h>30||a>2000) return HX_ASSETS.skyscraper[Math.floor(Math.random()*HX_ASSETS.skyscraper.length)];
   if(h>15||a>800)  return HX_ASSETS.generic[Math.floor(Math.random()*HX_ASSETS.generic.length)];
   if(h>8 ||a>300)  return HX_ASSETS.industrial[Math.floor(Math.random()*HX_ASSETS.industrial.length)];
