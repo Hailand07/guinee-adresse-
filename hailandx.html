@@ -23,11 +23,11 @@
 <link href="https://unpkg.com/maplibre-gl@4.1.0/dist/maplibre-gl.css" rel="stylesheet"/>
 <script src="https://unpkg.com/maplibre-gl@4.1.0/dist/maplibre-gl.js"></script>
 
-<!-- Three.js r128 + GLTFLoader (r128 = dernière version avec examples/js/loaders/) -->
+<!-- Three.js r134 + GLTFLoader (instance unique – NE PAS réimporter ailleurs) -->
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js"></script>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/GLTFLoader.js"></script>
 
 <!-- Fonts -->
 
@@ -2494,7 +2494,7 @@ async function afficherClient() {
         </div>
         <div style="display:flex;gap:7px;align-items:center">
           <div id="locked-address-display" class="locked-address-chip hidden">🔒 <span id="locked-address-text">OK</span></div>
-          <button class="btn-lock-zone" onclick="initierVerrouillage()" id="btn-lock-zone">🏠</button>
+          <button class="btn-lock-zone" onclick="initierVerrouillage()" id="btn-lock-zone">🏠 Verrouiller</button>
           <button class="btn btn-sm btn-round" onclick="centrerSurMoi()"
                   style="background:rgba(96,165,250,.15);border:1px solid rgba(96,165,250,.3);color:#60A5FA;padding:8px 12px">📍</button>
         </div>
@@ -4534,9 +4534,9 @@ async function finaliserVente() {
 
 // ════════════════════════════════════════════════════
 // HAILANDMAP VISION – Carte 3D Nocturne
-// Stratégie : 10 modèles GLB MAX autour du GPS
-// Haversine → tri distance → pool → destroy on exit
-// MapLibre GL + Three.js custom layer (MercatorCoord)
+// MapLibre GL + Three.js custom layer
+// Méthode: MercatorCoordinate officielle MapLibre
+// GLB chargés depuis Supabase Storage (cache + LOD)
 // ════════════════════════════════════════════════════
 
 const HX_STORAGE = 'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets';
@@ -4575,11 +4575,15 @@ const HX_ASSETS = {
     'building-e.glb','building-f.glb','building-g.glb','building-h.glb',
     'building-i.glb','building-j.glb','building-k.glb','building-l.glb',
   ],
+  trees: [
+    'hailand-assets-kenny_city_suburban/tree-large.glb',
+    'hailand-assets-kenny_city_suburban/tree-small.glb',
+  ],
 };
 
 function hxUrl(p){ return `${HX_STORAGE}/${p}`; }
 
-// ── État global carte ──
+// ── État global ──
 let hxMap          = null;
 let userMarker     = null;
 let mapWatchId     = null;
@@ -4588,15 +4592,6 @@ let livreurMarkers = [];
 let mapInitialized = false;
 let mapCurrentMode = '3d';
 
-// ── Position GPS actuelle ──
-let _hxUserLng = -13.677;   // défaut Conakry
-let _hxUserLat =   9.537;
-let _hxGpsReady = false;
-
-// ── Pool 3D : MAX 10 objets en scène ──
-const MAX_MODELS   = 10;
-const RAYON_METRES = 200;   // rayon de recherche autour du GPS
-
 // ── Three.js state ──
 let _tb_scene    = null;
 let _tb_camera   = null;
@@ -4604,30 +4599,16 @@ let _tb_renderer = null;
 let _tb_loader   = null;
 let _tb_ready    = false;
 
-// ── Cache + pool actif ──
-// _tb_modelCache : url → gltf.scene original (réutilisé par clone)
-// _tb_pool       : id  → { group: THREE.Group, lng, lat }
-const _tb_modelCache = new Map();
-const _tb_pool       = new Map();
+// ── Cache + instances actives ──
+const _tb_modelCache = new Map();  // url → gltf.scene original (jamais modifié)
+const _tb_active     = new Map();  // featId → THREE.Group dans la scène
 let   _tb_raf        = null;
-let   _tb_updating   = false;   // verrou anti-double appel
 
 const MAP_STYLE_DARK = 'https://tiles.basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 const MAP_STYLE_SAT  = 'https://tiles.basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
 
-/* ════════════════════════════════
-   HAVERSINE — distance en mètres
-   (formule identique à celle de Gemini)
-════════════════════════════════ */
-function hxHaversine(lat1, lon1, lat2, lon2) {
-  const R  = 6371e3;
-  const φ1 = lat1 * Math.PI / 180;
-  const φ2 = lat2 * Math.PI / 180;
-  const Δφ = (lat2 - lat1) * Math.PI / 180;
-  const Δλ = (lon2 - lon1) * Math.PI / 180;
-  const a  = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
+// ── Facteur d'échelle Mercator à l'équateur (MapLibre normalise à 0..1) ──
+const MERC_WORLD = 2 * Math.PI * 6378137; // circonférence Terre en mètres
 
 /* ════════════════════════════════
    OUVRIR LA CARTE
@@ -4644,22 +4625,13 @@ async function ouvrirHailandMap() {
     hxMap?.resize();
   }
 
-  // GPS — met à jour _hxUserLng/_hxUserLat ET déclenche le pool 3D
   if(navigator.geolocation) {
     mapWatchId = navigator.geolocation.watchPosition(
-      pos => {
-        _hxUserLng  = pos.coords.longitude;
-        _hxUserLat  = pos.coords.latitude;
-        _hxGpsReady = true;
-        actualiserPositionClient(_hxUserLat, _hxUserLng);
-        // Recharger le pool 3D à chaque position GPS mise à jour
-        _hx_schedulePoolUpdate();
-      },
-      err => console.warn('[GPS]', err),
-      { enableHighAccuracy:true, maximumAge:3000, timeout:12000 }
+      pos => actualiserPositionClient(pos.coords.latitude, pos.coords.longitude),
+      err  => console.warn('[GPS]', err),
+      { enableHighAccuracy:true, maximumAge:4000, timeout:12000 }
     );
   }
-
   _demarrerHorloge();
   await chargerBoutiquiersHailandX();
   await chargerStatsCarte();
@@ -4667,7 +4639,7 @@ async function ouvrirHailandMap() {
 }
 
 /* ════════════════════════════════
-   INIT MAPLIBRE
+   INITIALISATION MAPLIBRE
 ════════════════════════════════ */
 function _hx_initMap() {
   return new Promise(resolve => {
@@ -4677,8 +4649,8 @@ function _hx_initMap() {
     hxMap = new maplibregl.Map({
       container: 'hailand-map-container',
       style: MAP_STYLE_DARK,
-      center: [_hxUserLng, _hxUserLat],
-      zoom: 17,          // zoom fort d'emblée pour voir les GLB
+      center: [-13.677, 9.537],
+      zoom: 15,
       pitch: 60,
       bearing: -15,
       antialias: true,
@@ -4690,14 +4662,14 @@ function _hx_initMap() {
     hxMap.addControl(new maplibregl.NavigationControl({ showCompass:true, showZoom:true }), 'bottom-right');
 
     hxMap.on('load', () => {
-      const sources  = hxMap.getStyle().sources;
-      const srcName  = Object.keys(sources).find(k =>
+      const sources = hxMap.getStyle().sources;
+      const srcName = Object.keys(sources).find(k =>
         sources[k].type === 'vector' &&
         (k === 'carto' || k === 'openmaptiles' || k.toLowerCase().includes('tile'))
       ) || 'carto';
 
       const allLayers = hxMap.getStyle().layers || [];
-      const availSL   = new Set(allLayers.filter(l => l.source === srcName).map(l => l['source-layer']));
+      const availSL = new Set(allLayers.filter(l => l.source === srcName).map(l => l['source-layer']));
 
       const SL = {
         building:  availSL.has('building')       ? 'building'       : null,
@@ -4714,36 +4686,78 @@ function _hx_initMap() {
       // Fond sombre
       try {
         allLayers.filter(l=>l.type==='background').forEach(l=>{
-          try{hxMap.setPaintProperty(l.id,'background-color','#0c1018');}catch(e){}
+          try{ hxMap.setPaintProperty(l.id,'background-color','#0c1018'); }catch(e){}
         });
         allLayers.filter(l=>l['source-layer']==='landuse'||l['source-layer']==='landcover').forEach(l=>{
-          try{hxMap.setPaintProperty(l.id,'fill-color','#141a20');}catch(e){}
-          try{hxMap.setPaintProperty(l.id,'fill-opacity',1);}catch(e){}
+          try{ hxMap.setPaintProperty(l.id,'fill-color','#141a20'); }catch(e){}
+          try{ hxMap.setPaintProperty(l.id,'fill-opacity',1); }catch(e){}
         });
       }catch(e){}
 
       // Masquer fill-extrusion du style de base
       allLayers.forEach(l=>{
         if(l.type==='fill-extrusion' && !(l.id||'').startsWith('hailand-') && l.id!=='building-shadow'){
-          try{hxMap.setLayoutProperty(l.id,'visibility','none');}catch(e){}
+          try{ hxMap.setLayoutProperty(l.id,'visibility','none'); }catch(e){}
         }
       });
 
-      // Couches vectorielles (routes, végétation, eau, lampadaires)
+      // Couches vectorielles
       _hx_addRoutes(srcName, SL.transport);
       _hx_addVegetation(srcName, SL.landuse);
       _hx_addWater(srcName, SL.water, SL.waterway);
       _hx_addStreetLights();
-
-      // fill-extrusion fallback UNIQUEMENT dans le rayon GPS (filtre bbox)
       _hx_addFallbackBuildings(srcName, SL.building, HEIGHT, BASE);
 
-      // Custom layer Three.js
+      // Custom layer Three.js (GLB) — ajoutée EN DERNIER pour être au-dessus
       _hx_addThreeLayer();
 
       _hx_setAmbiance();
 
-      hxMap.on('moveend', _hx_schedulePoolUpdate);
+      // ── Interaction polygone : clic pour verrouiller ──
+      // On écoute le clic sur toutes les couches bâtiment
+      const BUILDING_LAYERS = ['hailand-buildings-fallback','hailand-buildings-roof','building-shadow'];
+      BUILDING_LAYERS.forEach(layerId => {
+        hxMap.on('click', layerId, _hx_onPolygonClick);
+      });
+      // Curseur pointer sur survol
+      BUILDING_LAYERS.forEach(layerId => {
+        hxMap.on('mouseenter', layerId, () => { hxMap.getCanvas().style.cursor = 'pointer'; });
+        hxMap.on('mouseleave', layerId, () => { hxMap.getCanvas().style.cursor = ''; });
+      });
+
+      // Couche de surbrillance au hover (touch feedback)
+      hxMap.addLayer({
+        id: 'hailand-building-hover',
+        type: 'fill-extrusion',
+        source: srcName,
+        'source-layer': SL.building || 'building',
+        filter: ['==', ['id'], ''],  // vide par défaut
+        paint: {
+          'fill-extrusion-color': '#F5A623',
+          'fill-extrusion-height': HEIGHT,
+          'fill-extrusion-base': BASE,
+          'fill-extrusion-opacity': 0.55,
+        }
+      });
+
+      // Activer le highlight au survol
+      let hoveredId = null;
+      if(SL.building) {
+        hxMap.on('mousemove', 'hailand-buildings-fallback', e => {
+          if(e.features.length > 0) {
+            const fid = e.features[0].id;
+            if(fid !== hoveredId) {
+              hoveredId = fid;
+              hxMap.setFilter('hailand-building-hover', ['==', ['id'], fid ?? '']);
+            }
+          }
+        });
+        hxMap.on('mouseleave', 'hailand-buildings-fallback', () => {
+          hoveredId = null;
+          hxMap.setFilter('hailand-building-hover', ['==', ['id'], '']);
+        });
+      }
+
       hxMap.on('move', () => {
         const z = document.getElementById('map-zoom-val');
         if(z) z.textContent = Math.round(hxMap.getZoom());
@@ -4762,14 +4776,28 @@ function _hx_initMap() {
 
 /* ════════════════════════════════
    CUSTOM LAYER THREE.JS
-   Utilise MercatorCoordinate (API officielle MapLibre)
-   pour positionner les GLB dans l'espace monde correct
+   Utilise maplibregl.MercatorCoordinate pour
+   positionner les objets dans l'espace MapLibre.
+   C'est la méthode officielle des exemples MapLibre.
 ════════════════════════════════ */
 function _hx_addThreeLayer() {
   if(!window.THREE || !THREE.GLTFLoader) {
-    console.error('[HailandMap] Three.js ou GLTFLoader absent');
+    console.error('[HailandMap] Three.js ou GLTFLoader manquant – vérifier les CDN');
     return;
   }
+
+  // Point de référence : centre de Conakry
+  // Tous les modèles sont positionnés en mètres relatifs à ce point
+  const CENTER_LNG = -13.677;
+  const CENTER_LAT =  9.537;
+
+  // Coordonnée Mercator du centre — c'est l'origine de notre scène Three.js
+  const originMerc = maplibregl.MercatorCoordinate.fromLngLat(
+    { lng: CENTER_LNG, lat: CENTER_LAT }, 0
+  );
+
+  // Facteur: 1 unité Three.js = combien de mètres à cette latitude
+  const metersPerUnit = originMerc.meterInMercatorCoordinateUnits();
 
   const customLayer = {
     id: 'hailand-3d-glb',
@@ -4781,7 +4809,7 @@ function _hx_addThreeLayer() {
       _tb_scene  = new THREE.Scene();
       _tb_camera = new THREE.Camera();
 
-      // Éclairage Three.js
+      // Lumières Three.js
       _tb_scene.add(new THREE.AmbientLight(0xFFE8C0, 0.6));
       const sun = new THREE.DirectionalLight(0xFFD580, 0.9);
       sun.position.set(-1, 2, 1.5).normalize();
@@ -4790,51 +4818,48 @@ function _hx_addThreeLayer() {
       moon.position.set(1, 3, -1).normalize();
       _tb_scene.add(moon);
 
-      // Renderer partagé avec MapLibre (même context WebGL)
+      // Renderer partagé avec le canvas MapLibre
       _tb_renderer = new THREE.WebGLRenderer({
-        canvas:    map.getCanvas(),
-        context:   gl,
+        canvas:   map.getCanvas(),
+        context:  gl,
         antialias: false,
       });
-      _tb_renderer.autoClear          = false;
-      _tb_renderer.shadowMap.enabled  = false;
-      _tb_renderer.outputEncoding     = THREE.sRGBEncoding;
+      _tb_renderer.autoClear   = false;
+      _tb_renderer.shadowMap.enabled = false;
 
       _tb_ready = true;
-      console.log('[HailandMap] Three.js custom layer prête ✓');
+      console.log('[HailandMap] Custom layer Three.js initialisée ✓');
 
-      // Attendre que les tuiles soient chargées (idle) avant le premier pool
-      hxMap.once('idle', () => {
-        console.log('[HailandMap] idle → lancement pool 3D');
-        _hx_updatePool().catch(e => console.warn('[3D pool]', e));
-      });
+      // Plus de chargement automatique – l'utilisateur choisit lui-même
     },
 
     render(gl, matrix) {
       if(!_tb_ready || !_tb_scene) return;
 
-      // Point d'ancrage GPS actuel
-      const anchor = maplibregl.MercatorCoordinate.fromLngLat(
-        { lng: _hxUserLng, lat: _hxUserLat }, 0
+      // matrix = Float64Array[16] — matrice de projection MapLibre
+      // Elle transforme les coordonnées Mercator (0..1) en clip space WebGL
+      // On la passe directement comme matrice de projection+vue combinée à Three.js
+
+      // Matrice de rotation/translation du point d'origine vers le monde Three.js
+      const rotX = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1,0,0), Math.PI/2);
+      const scale = new THREE.Matrix4().makeScale(metersPerUnit, -metersPerUnit, metersPerUnit);
+
+      // Translation: origine Mercator → position dans le clip space
+      const translateMerc = new THREE.Matrix4().makeTranslation(
+        originMerc.x, originMerc.y, originMerc.z
       );
-      const mpu = anchor.meterInMercatorCoordinateUnits();
 
-      // IMPORTANT: ne JAMAIS appeler multiply() sur mapM directement
-      // car multiply() modifie la matrice en place → bug cumulatif chaque frame
-      // On clone chaque matrice intermédiaire
-      const rotX  = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1,0,0), Math.PI/2);
-      const scale = new THREE.Matrix4().makeScale(mpu, -mpu, mpu);
-      const trans = new THREE.Matrix4().makeTranslation(anchor.x, anchor.y, anchor.z);
-      const mapM  = new THREE.Matrix4().fromArray(matrix);  // nouvelle instance à chaque frame
+      // Matrice MapLibre
+      const mapMatrix = new THREE.Matrix4().fromArray(matrix);
 
-      // Multiplication correcte: mapM * trans * rotX * scale (sans mutation)
-      const finalM = new THREE.Matrix4()
-        .multiplyMatrices(mapM, trans)
+      // Matrice finale = mapMatrix * translateMerc * rotX * scale
+      const finalMatrix = mapMatrix
+        .multiply(translateMerc)
         .multiply(rotX)
         .multiply(scale);
 
-      _tb_camera.projectionMatrix = finalM;
-      _tb_camera.projectionMatrixInverse.copy(finalM).invert();
+      _tb_camera.projectionMatrix = finalMatrix;
+      _tb_camera.projectionMatrixInverse.copy(finalMatrix).invert();
 
       _tb_renderer.resetState();
       _tb_renderer.render(_tb_scene, _tb_camera);
@@ -4846,202 +4871,234 @@ function _hx_addThreeLayer() {
 }
 
 /* ════════════════════════════════
-   POOL UPDATE — cœur du système
-   1. Récupérer features dans le rayon GPS
-   2. Haversine → trier → garder 10 plus proches
-   3. Détruire ceux hors top-10 (libère RAM immédiatement)
-   4. Charger les nouveaux entrants
+   CLIC SUR UN POLYGONE BÂTIMENT
+   → Nouvelle logique interactive
 ════════════════════════════════ */
-function _hx_schedulePoolUpdate() {
-  if(_tb_raf) cancelAnimationFrame(_tb_raf);
-  _tb_raf = requestAnimationFrame(() => _hx_updatePool().catch(()=>{}));
+async function _hx_onPolygonClick(e) {
+  if(!e.features || e.features.length === 0) return;
+
+  // Éviter les doubles déclenchements si panel déjà ouvert
+  const panelAlreadyOpen = !document.getElementById('lock-confirm-panel')?.classList.contains('hidden');
+  if(panelAlreadyOpen) return;
+
+  const feat = e.features[0];
+  const geom = feat.geometry;
+  if(!geom || geom.type !== 'Polygon') return;
+
+  const ring = geom.coordinates[0];
+  const ctr  = _hx_centroid(ring);
+  if(!ctr) return;
+
+  // Demander confirmation à l'utilisateur
+  const ok = await hxDialog({
+    title: '🏠 Verrouiller cet emplacement ?',
+    msg: 'Ce polygone sera enregistré comme votre adresse officielle HailandX. Une maison 3D et un lampadaire seront placés ici.',
+    confirm: '✅ Oui, verrouiller',
+    cancel: 'Non'
+  });
+  if(!ok) return;
+
+  // Extraire les données exactes du polygone
+  const h = Math.max(
+    parseFloat(feat.properties?.height || feat.properties?.render_height ||
+    (feat.properties?.['building:levels'] || 0) * 3 || 5), 3
+  );
+  const a    = _hx_area(ring);
+  const fid  = _hx_featId(feat);
+  const buildId = String(feat.properties?.osm_id || feat.id || fid);
+
+  // Convertir [[lon,lat]] → [[lat,lon]] pour afficherZoneVerrouillee
+  const coordsLatLon = ring.map(c => [c[1], c[0]]);
+
+  // Afficher le polygone doré + panel de confirmation
+  afficherZoneVerrouillee(coordsLatLon, a, buildId);
+
+  // Stocker aussi les infos 3D pour le chargement après confirmation
+  _pendingRing     = ring;      // [[lon,lat]] GeoJSON
+  _pendingCentroid = ctr;
+  _pendingHeight   = h;
+  _pendingArea     = a;
+  _pendingFid      = fid;
 }
 
-async function _hx_updatePool() {
-  if(!_tb_ready || !hxMap || _tb_updating) return;
-  _tb_updating = true;
-
-  try {
-    // Attendre que la carte soit idle (tuiles chargées) avant de querier
-    if(!hxMap.isStyleLoaded()) { _tb_updating = false; return; }
-
-    // ── 1. Bbox pixel autour du GPS ──
-    const deg = RAYON_METRES / 111320;
-    const cnv = hxMap.getCanvas();
-    const tl  = hxMap.project([_hxUserLng - deg, _hxUserLat + deg]);
-    const br  = hxMap.project([_hxUserLng + deg, _hxUserLat - deg]);
-
-    // Clamp dans les limites du canvas
-    const bboxPixel = [
-      [Math.max(0, Math.min(cnv.width,  tl.x)), Math.max(0, Math.min(cnv.height, tl.y))],
-      [Math.max(0, Math.min(cnv.width,  br.x)), Math.max(0, Math.min(cnv.height, br.y))],
-    ];
-
-    // Si la bbox est invalide (GPS hors écran), utiliser le centre de l'écran
-    const validBbox = bboxPixel[0][0] < bboxPixel[1][0] && bboxPixel[0][1] < bboxPixel[1][1];
-
-    let features = [];
-    try {
-      features = hxMap.queryRenderedFeatures(
-        validBbox ? bboxPixel : undefined,
-        { layers: ['hailand-buildings-fallback'] }
-      );
-    } catch(e) { _tb_updating = false; return; }
-
-    if(!features || features.length === 0) {
-      // Retry dans 1s si pas de features (tuiles pas encore chargées)
-      _tb_updating = false;
-      setTimeout(_hx_schedulePoolUpdate, 1000);
-      return;
-    }
-
-    // ── 2. Calculer la distance Haversine pour chaque feature ──
-    const candidats = [];
-    for(const feat of features) {
-      if(!feat.geometry || feat.geometry.type !== 'Polygon') continue;
-      const ring = feat.geometry.coordinates[0];
-      const ctr  = _hx_centroid(ring);
-      if(!ctr) continue;
-      const dist = hxHaversine(_hxUserLat, _hxUserLng, ctr[1], ctr[0]);
-      if(dist > RAYON_METRES) continue;   // hors rayon → ignoré
-      candidats.push({
-        id:   _hx_featId(feat),
-        feat,
-        ring,
-        ctr,
-        dist,
-      });
-    }
-
-    // ── 3. Trier par distance et garder les MAX_MODELS plus proches ──
-    candidats.sort((a, b) => a.dist - b.dist);
-    const top10 = candidats.slice(0, MAX_MODELS);
-    const top10Ids = new Set(top10.map(c => c.id));
-
-    // ── 4. NETTOYAGE — détruire tout ce qui n'est plus dans le top 10 ──
-    for(const [id, entry] of _tb_pool) {
-      if(!top10Ids.has(id)) {
-        _tb_scene.remove(entry.group);
-        // Libérer la mémoire GPU des géométries et textures
-        entry.group.traverse(obj => {
-          if(obj.geometry) obj.geometry.dispose();
-          if(obj.material) {
-            if(Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
-            else obj.material.dispose();
-          }
-        });
-        _tb_pool.delete(id);
-        console.log(`🗑️ [3D] bâtiment ${id.slice(0,8)} détruit (hors rayon)`);
-      }
-    }
-
-    // ── 5. AJOUT — charger les nouveaux entrants ──
-    for(const c of top10) {
-      if(_tb_pool.has(c.id)) continue;   // déjà en scène
-
-      const height = Math.max(
-        parseFloat(c.feat.properties?.height
-          || c.feat.properties?.render_height
-          || (c.feat.properties?.['building:levels']||0)*3
-          || 5), 3
-      );
-      const area  = _hx_area(c.ring);
-      const model = _hx_pickModel(height, area, c.feat.properties?.building);
-
-      // Réserver la place dans le pool immédiatement (évite doublons async)
-      _tb_pool.set(c.id, null);
-
-      // Chargement non-bloquant
-      _hx_loadAndPlace(hxUrl(model), c.ctr, height, area, c.id, c.feat.properties)
-        .then(() => {
-          console.log(`✅ [3D] bâtiment ${c.id.slice(0,8)} placé (${Math.round(c.dist)}m)`);
-        })
-        .catch(err => {
-          console.warn(`⚠️ [3D] échec chargement:`, err?.message || err);
-          _tb_pool.delete(c.id);   // libérer le slot si échec
-        });
-    }
-
-  } finally {
-    _tb_updating = false;
-    if(_tb_pool.size > 0) hxMap.triggerRepaint();
-  }
-}
-
-/* ════════════════════════════════
-   CHARGER ET PLACER UN GLB
-════════════════════════════════ */
-async function _hx_loadAndPlace(url, lngLat, heightM, areaM2, featId, props) {
+/* ─── Charger un GLB et le placer dans la scène ─── */
+async function _hx_loadAndPlace(url, lngLat, heightM, areaM2, fid) {
   if(!_tb_scene || !_tb_loader) return;
 
-  // Charger ou récupérer du cache
   let gltfScene;
+
   if(_tb_modelCache.has(url)) {
     gltfScene = _tb_modelCache.get(url);
   } else {
-    const gltf = await new Promise((res, rej) =>
-      _tb_loader.load(url, res, undefined, rej)
-    );
+    const gltf = await new Promise((res, rej) => {
+      _tb_loader.load(url, res, undefined, rej);
+    });
     gltfScene = gltf.scene;
     _tb_modelCache.set(url, gltfScene);
-    console.log(`📦 [Cache] ${url.split('/').pop()} mis en cache`);
   }
 
-  // Si le slot a déjà été détruit pendant le chargement → annuler
-  if(!_tb_pool.has(featId)) return;
-
-  // Cloner la scène (le cache n'est jamais modifié)
+  // Cloner pour avoir une instance indépendante
   const group = gltfScene.clone(true);
 
-  // ── Calcul d'échelle en mètres ──
+  // ── Calculer l'échelle en MÈTRES ──
+  // Dans notre scène, 1 unité = 1 mètre (grâce au metersPerUnit dans la matrice)
   const bbox = new THREE.Box3().setFromObject(group);
   const sz   = new THREE.Vector3();
   bbox.getSize(sz);
   const mH = sz.y > 0.01 ? sz.y : 1;
   const mW = Math.max(sz.x, sz.z) > 0.01 ? Math.max(sz.x, sz.z) : 1;
+
   const tH = Math.max(heightM, 3);
   const tW = Math.max(Math.sqrt(Math.max(areaM2, 20)), 5);
   const s  = Math.min(tH / mH, (tW / mW) * 1.5);
   group.scale.set(s, s, s);
 
-  // ── Rotation selon l'orientation de la parcelle ──
-  const rotation = parseFloat(props?.['building:direction'] || props?.rotation || 0);
-  group.rotation.z = rotation * Math.PI / 180;
+  // Rotation aléatoire parmi 4 orientations cardinales
+  group.rotation.z = [0, Math.PI/2, Math.PI, 3*Math.PI/2][Math.floor(Math.random()*4)];
 
-  // ── Matériaux : activer l'émission sur les fenêtres ──
-  group.traverse(obj => {
-    if(!obj.isMesh || !obj.material) return;
-    const mat = obj.material;
-    const name = (mat.name || '').toLowerCase();
-    if(name.includes('window') || name.includes('glass') || name.includes('fenetre')) {
-      mat.emissive     = new THREE.Color(0xFFD060);
-      mat.emissiveIntensity = 0.6;
-    }
-  });
+  // ── Position en mètres depuis le centre de référence ──
+  // On calcule la distance en mètres entre le centroïde et le centre Conakry
+  const CENTER_LNG = -13.677, CENTER_LAT = 9.537;
+  const R = 6378137; // rayon Terre mètres
+  const dLng = (lngLat[0] - CENTER_LNG) * Math.PI / 180;
+  const dLat = (lngLat[1] - CENTER_LAT) * Math.PI / 180;
+  const mLat = (CENTER_LAT + lngLat[1]) / 2 * Math.PI / 180;
+  const dx =  dLng * R * Math.cos(mLat);
+  const dy = -dLat * R;  // négatif car Y est inversé en Three.js après rotX
 
-  // ── Position en mètres depuis le GPS actuel ──
-  // (le point d'ancrage est _hxUserLng/_hxUserLat dans render())
-  const R   = 6378137;
-  const dLng = (lngLat[0] - _hxUserLng) * Math.PI / 180;
-  const dLat = (lngLat[1] - _hxUserLat) * Math.PI / 180;
-  const mLat = (_hxUserLat + lngLat[1]) / 2 * Math.PI / 180;
-  const dx   =  dLng * R * Math.cos(mLat);
-  const dy   = -dLat * R;   // Y inversé (Three.js = haut, Mercator = bas)
   group.position.set(dx, dy, 0);
 
-  // ── Lumière de fenêtre ──
-  const wl = new THREE.PointLight(0xFFD080, 0.5, 60);
-  wl.position.set(0, tH * 0.45, 0);
+  // Lumière de fenêtre intégrée
+  const wl = new THREE.PointLight(0xFFD080, 0.4, 50);
+  wl.position.set(0, tH * 0.4, 0);
   group.add(wl);
 
   _tb_scene.add(group);
-  _tb_pool.set(featId, { group, lng: lngLat[0], lat: lngLat[1] });
+  _tb_active.set(fid, group);
+  hxMap.triggerRepaint();
+}
+
+/* ─── Vider toute la scène ─── */
+function _hx_clearAllMeshes() {
+  if(!_tb_scene) return;
+  for(const [, g] of _tb_active) { if(g) _tb_scene.remove(g); }
+  _tb_active.clear();
+}
+
+/* ─── Placer des lampadaires 3D autour du polygone verrouillé ─── */
+function _hx_placeLampadaires(centroidLngLat, areaM2, baseFid) {
+  if(!_tb_scene) return;
+
+  // Rayon de placement : ~1.2x la taille du bâtiment, min 5m, max 15m
+  const radius = Math.min(Math.max(Math.sqrt(areaM2) * 0.7, 5), 15);
+
+  // Placer 4 lampadaires aux 4 coins cardinaux
+  const angles = [0, Math.PI/2, Math.PI, 3*Math.PI/2];
+
+  const lampUrl = hxUrl('hailand-assets-kenny_city_suburban/lamp-post.glb');
+
+  angles.forEach((angle, i) => {
+    const lampFid = `${baseFid}_lamp_${i}`;
+
+    // Offset en mètres depuis le centroïde
+    const offsetX = Math.cos(angle) * radius;
+    const offsetY = Math.sin(angle) * radius;
+
+    // Convertir l'offset mètre → degrés approximatif
+    const R = 6378137;
+    const dLon = (offsetX / (R * Math.cos(centroidLngLat[1] * Math.PI / 180))) * (180 / Math.PI);
+    const dLat = (offsetY / R) * (180 / Math.PI);
+
+    const lampLngLat = [centroidLngLat[0] + dLon, centroidLngLat[1] + dLat];
+
+    // Essayer de charger le GLB lampadaire du bucket
+    if(_tb_modelCache.has(lampUrl)) {
+      _placeOneLamp(lampUrl, lampLngLat, lampFid);
+    } else {
+      _tb_loader.load(
+        lampUrl,
+        gltf => {
+          _tb_modelCache.set(lampUrl, gltf.scene);
+          _placeOneLamp(lampUrl, lampLngLat, lampFid);
+        },
+        undefined,
+        () => {
+          // Fallback : lampadaire géométrique Three.js si le GLB n'existe pas
+          _placeFallbackLamp(lampLngLat, lampFid);
+        }
+      );
+    }
+  });
+}
+
+/* ─── Placer un lampadaire GLB ─── */
+function _placeOneLamp(url, lngLat, fid) {
+  const orig = _tb_modelCache.get(url);
+  if(!orig || !_tb_scene) return;
+
+  const group = orig.clone(true);
+  group.scale.set(0.4, 0.4, 0.4);
+
+  const CENTER_LNG = -13.677, CENTER_LAT = 9.537;
+  const R = 6378137;
+  const dLng = (lngLat[0] - CENTER_LNG) * Math.PI / 180;
+  const dLat = (lngLat[1] - CENTER_LAT) * Math.PI / 180;
+  const mLat = (CENTER_LAT + lngLat[1]) / 2 * Math.PI / 180;
+  const dx =  dLng * R * Math.cos(mLat);
+  const dy = -dLat * R;
+  group.position.set(dx, dy, 0);
+
+  // Lumière chaude du lampadaire
+  const light = new THREE.PointLight(0xFFD060, 1.2, 20);
+  light.position.set(0, 3.5, 0);
+  group.add(light);
+
+  _tb_scene.add(group);
+  _tb_active.set(fid, group);
+  hxMap.triggerRepaint();
+}
+
+/* ─── Lampadaire géométrique de secours (si GLB absent du bucket) ─── */
+function _placeFallbackLamp(lngLat, fid) {
+  if(!_tb_scene) return;
+
+  const group = new THREE.Group();
+
+  // Mât
+  const mat = new THREE.MeshLambertMaterial({ color: 0x555566 });
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 4, 6), mat);
+  pole.position.set(0, 2, 0);
+  group.add(pole);
+
+  // Tête lumineuse
+  const headMat = new THREE.MeshLambertMaterial({ color: 0xFFE08A, emissive: 0xFFD060, emissiveIntensity: 0.8 });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), headMat);
+  head.position.set(0.3, 4.1, 0);
+  group.add(head);
+
+  // Lumière point
+  const light = new THREE.PointLight(0xFFD060, 1.4, 22);
+  light.position.set(0.3, 4.2, 0);
+  group.add(light);
+
+  // Position
+  const CENTER_LNG = -13.677, CENTER_LAT = 9.537;
+  const R = 6378137;
+  const dLng = (lngLat[0] - CENTER_LNG) * Math.PI / 180;
+  const dLat = (lngLat[1] - CENTER_LAT) * Math.PI / 180;
+  const mLat = (CENTER_LAT + lngLat[1]) / 2 * Math.PI / 180;
+  const dx =  dLng * R * Math.cos(mLat);
+  const dy = -dLat * R;
+  group.position.set(dx, dy, 0);
+
+  _tb_scene.add(group);
+  _tb_active.set(fid, group);
   hxMap.triggerRepaint();
 }
 
 /* ════════════════════════════════
-   FALLBACK FILL-EXTRUSION
-   S'efface à zoom≥16 quand les GLB prennent le relais
+   COUCHE FALLBACK FILL-EXTRUSION
+   (s'efface progressivement à zoom≥16 quand GLB apparaissent)
 ════════════════════════════════ */
 function _hx_addFallbackBuildings(src, sl, HEIGHT, BASE) {
   if(!sl || hxMap.getLayer('building-shadow')) return;
@@ -5070,9 +5127,10 @@ function _hx_addFallbackBuildings(src, sl, HEIGHT, BASE) {
       ],
       'fill-extrusion-height':HEIGHT,
       'fill-extrusion-base':BASE,
+      // S'efface quand les GLB s'affichent
       'fill-extrusion-opacity':[
         'interpolate',['linear'],['zoom'],
-        13,1.0, 15,0.95, 16,0.4, 17,0.0
+        13,1.0, 15,0.95, 16,0.5, 17,0.0
       ],
       'fill-extrusion-vertical-gradient':true
     }
@@ -5086,11 +5144,11 @@ function _hx_addFallbackBuildings(src, sl, HEIGHT, BASE) {
       'fill-extrusion-color':['interpolate',['linear'],HEIGHT,0,'#1e1a14',10,'#252018',25,'#2e2820'],
       'fill-extrusion-height':['+',HEIGHT,0.4],
       'fill-extrusion-base':HEIGHT,
-      'fill-extrusion-opacity':['interpolate',['linear'],['zoom'],13,1.0,16,0.4,17,0.0]
+      'fill-extrusion-opacity':['interpolate',['linear'],['zoom'],13,1.0,16,0.5,17,0.0]
     }
   });
 
-  // Lueur fenêtres 2D (basse altitude)
+  // Lueur fenêtres 2D
   hxMap.addLayer({
     id:'hailand-windows', type:'fill',
     source:src, 'source-layer':sl,
@@ -5110,19 +5168,19 @@ function _hx_addRoutes(src, sl) {
   const MAIN  = ['in',['get','class'],['literal',['primary','secondary','trunk','motorway']]];
   const MINOR = ['in',['get','class'],['literal',['minor','residential','service','track','path']]];
 
-  hxMap.addLayer({id:'hailand-roads-glow',type:'line',source:src,'source-layer':sl,filter:MAIN,
+  hxMap.addLayer({id:'hailand-roads-glow', type:'line',source:src,'source-layer':sl,filter:MAIN,
     paint:{'line-color':'rgba(245,166,35,0.20)','line-width':16,'line-blur':10}});
-  hxMap.addLayer({id:'hailand-roads-main',type:'line',source:src,'source-layer':sl,filter:MAIN,
+  hxMap.addLayer({id:'hailand-roads-main', type:'line',source:src,'source-layer':sl,filter:MAIN,
     paint:{'line-color':'#1c2235','line-width':9}});
-  hxMap.addLayer({id:'hailand-roads-edge',type:'line',source:src,'source-layer':sl,filter:MAIN,
+  hxMap.addLayer({id:'hailand-roads-edge', type:'line',source:src,'source-layer':sl,filter:MAIN,
     paint:{'line-color':'rgba(245,166,35,0.28)','line-width':1.5,'line-gap-width':9}});
-  hxMap.addLayer({id:'hailand-roads-dash',type:'line',source:src,'source-layer':sl,filter:MAIN,
+  hxMap.addLayer({id:'hailand-roads-dash', type:'line',source:src,'source-layer':sl,filter:MAIN,
     paint:{'line-color':'rgba(255,255,255,0.50)','line-width':1.2,'line-dasharray':[4,6]}});
-  hxMap.addLayer({id:'hailand-roads-minor-glow',type:'line',source:src,'source-layer':sl,filter:MINOR,
+  hxMap.addLayer({id:'hailand-roads-minor-glow', type:'line',source:src,'source-layer':sl,filter:MINOR,
     paint:{'line-color':'rgba(220,140,20,0.12)','line-width':8,'line-blur':5}});
-  hxMap.addLayer({id:'hailand-roads-minor',type:'line',source:src,'source-layer':sl,filter:MINOR,
+  hxMap.addLayer({id:'hailand-roads-minor', type:'line',source:src,'source-layer':sl,filter:MINOR,
     paint:{'line-color':'#181e2e','line-width':5}});
-  hxMap.addLayer({id:'hailand-roads-minor-edge',type:'line',source:src,'source-layer':sl,filter:MINOR,
+  hxMap.addLayer({id:'hailand-roads-minor-edge', type:'line',source:src,'source-layer':sl,filter:MINOR,
     paint:{'line-color':'rgba(220,140,20,0.18)','line-width':0.8,'line-gap-width':5}});
 }
 
@@ -5173,7 +5231,7 @@ function _hx_addWater(src, slW, slWW) {
 }
 
 /* ════════════════════════════════
-   LAMPADAIRES 2D (GeoJSON circles)
+   LAMPADAIRES 2D
 ════════════════════════════════ */
 function _hx_addStreetLights() {
   if(hxMap.getSource('hx-lampadaires')) return;
@@ -5204,7 +5262,7 @@ function _hx_addStreetLights() {
 }
 
 /* ════════════════════════════════
-   AMBIANCE MAPLIBRE
+   AMBIANCE
 ════════════════════════════════ */
 function _hx_setAmbiance() {
   try{hxMap.setLight({anchor:'viewport',color:'#FFE8A0',intensity:0.60,position:[1.5,225,45]});}catch(e){}
@@ -5215,13 +5273,8 @@ function _hx_setAmbiance() {
    HELPERS
 ════════════════════════════════ */
 function _hx_featId(f){
-  return String(
-    f.id ??
-    f.properties?.osm_id ??
-    f.properties?.id ??
-    (f.geometry?.coordinates?.[0]?.[0]?.toString()) ??
-    Math.random()
-  );
+  return String(f.id ?? f.properties?.osm_id ?? f.properties?.id
+    ?? (f.geometry?.coordinates?.[0]?.[0]?.toString()) ?? Math.random());
 }
 
 function _hx_centroid(ring){
@@ -5240,9 +5293,7 @@ function _hx_area(ring){
   return Math.abs(a/2)*111319*111319;
 }
 
-function _hx_pickModel(h, a, buildingType) {
-  const bt = (buildingType||'').toLowerCase();
-  if(bt.includes('industrial')||bt.includes('warehouse')) return HX_ASSETS.industrial[Math.floor(Math.random()*HX_ASSETS.industrial.length)];
+function _hx_pickModel(h,a){
   if(h>30||a>2000) return HX_ASSETS.skyscraper[Math.floor(Math.random()*HX_ASSETS.skyscraper.length)];
   if(h>15||a>800)  return HX_ASSETS.generic[Math.floor(Math.random()*HX_ASSETS.generic.length)];
   if(h>8 ||a>300)  return HX_ASSETS.industrial[Math.floor(Math.random()*HX_ASSETS.industrial.length)];
@@ -5507,23 +5558,17 @@ let _pendingCoords = null;   // données en attente de confirmation
 let _pendingSurface= 0;
 let _pendingBuildId= null;
 
-/* ─── Lancer le verrouillage depuis position GPS actuelle ─── */
+// Variables supplémentaires pour la logique interactive
+let _pendingRing     = null;   // ring GeoJSON [[lon,lat]] du polygone cliqué
+let _pendingCentroid = null;   // [lon, lat] centroïde
+let _pendingHeight   = 5;
+let _pendingArea     = 100;
+let _pendingFid      = null;
+
+/* ─── Bouton "Verrouiller" dans la barre basse ─── */
 function initierVerrouillage() {
   if(!hxMap) { toast('Ouvrez d\'abord HailandMap','warn'); return; }
-
-  const btn = document.getElementById('btn-lock-zone');
-  if(btn) { btn.innerHTML = '<span class="lock-spinner"></span> Scan…'; btn.disabled = true; }
-
-  if(!userMarker) {
-    toast('GPS en cours d\'acquisition…','warn');
-    if(btn) { btn.innerHTML = '🏠 Verrouiller'; btn.disabled = false; }
-    return;
-  }
-
-  const { lat, lng } = userMarker.getLatLng();
-  verrouillerMaison(lat, lng).finally(() => {
-    if(btn) { btn.innerHTML = '🏠 Verrouiller'; btn.disabled = false; }
-  });
+  toast('👆 Touchez un bâtiment sur la carte pour le verrouiller','');
 }
 
 /* ─── Requête Overpass : trouver le bâtiment au point GPS ─── */
@@ -5621,13 +5666,36 @@ async function confirmerVerrouillage() {
 
   if(!_pendingCoords) return;
 
-  // Stabiliser le polygone (retirer les pointillés, renforcer le remplissage)
-  if(zoneActive) {
-    zoneActive.setStyle({ dashArray: null, fillOpacity: 0.6, weight: 3 });
+  await enregistrerAdresseHailandX(_pendingCoords, _pendingSurface, _pendingBuildId);
+
+  // Placer la maison 3D et le lampadaire si les données du polygone sont disponibles
+  if(_pendingCentroid && _pendingFid && _tb_ready) {
+    const modelPath = _hx_pickModel(_pendingHeight, _pendingArea);
+    const fid = _pendingFid + '_locked';
+
+    // Supprimer un éventuel modèle précédent pour ce fid
+    if(_tb_active.has(fid)) {
+      const old = _tb_active.get(fid);
+      if(old) _tb_scene.remove(old);
+      _tb_active.delete(fid);
+    }
+    // Réserver
+    _tb_active.set(fid, null);
+
+    // Charger la maison
+    _hx_loadAndPlace(hxUrl(modelPath), _pendingCentroid, _pendingHeight, _pendingArea, fid)
+      .then(() => {
+        // Placer plusieurs lampadaires autour du polygone (~5-8m du centroïde)
+        _hx_placeLampadaires(_pendingCentroid, _pendingArea, fid);
+        toast('🏠 Maison 3D et lampadaires placés !', 'success');
+        hxMap.triggerRepaint();
+      })
+      .catch(e => console.warn('[HailandMap] Erreur placement 3D:', e));
   }
 
-  await enregistrerAdresseHailandX(_pendingCoords, _pendingSurface, _pendingBuildId);
-  _pendingCoords = null;
+  _pendingCoords  = null;
+  _pendingRing    = null;
+  _pendingCentroid= null;
 }
 
 /* ─── Annuler le verrouillage (bouton Non dans le panel) ─── */
@@ -5641,7 +5709,10 @@ function annulerVerrouillage() {
   });
   try { if(hxMap && hxMap.getSource('hx-pending-zone')) hxMap.removeSource('hx-pending-zone'); } catch(e){}
 
-  _pendingCoords = null;
+  _pendingCoords   = null;
+  _pendingRing     = null;
+  _pendingCentroid = null;
+  _pendingFid      = null;
   toast('Verrouillage annulé','');
 }
 
