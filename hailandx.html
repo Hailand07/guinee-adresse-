@@ -5854,14 +5854,6 @@ let   _hx3dScene    = null; // THREE.Scene partagée
 let   _hx3dCamera   = null; // THREE.Camera synchronisée avec MapLibre
 let   _hx3dRenderer = null; // THREE.WebGLRenderer (canvas MapLibre)
 
-/* ── Conversion lon/lat → coordonnées Mercator MapLibre ── */
-function _lngLatToMercator(lon, lat) {
-  // MapLibre normalise Mercator sur [0,1]² → multiplier par 2^zoom ne suffit pas
-  // On utilise la formule MercatorCoordinate de MapLibre
-  const mc = maplibregl.MercatorCoordinate.fromLngLat([lon, lat], 0);
-  return { x: mc.x, y: mc.y, z: mc.z, meterScale: mc.meterInMercatorCoordinateUnits() };
-}
-
 /* ── Choisir le modèle selon la surface ── */
 function _choisirModele3D(surface) {
   const b = ASSETS_3D.buildings;
@@ -5909,11 +5901,8 @@ function calculerSurface(coords) {
 function _creerOuMettreAJourCustomLayer() {
   if (!hxMap) return;
 
-  // Si le layer existe déjà, on déclenche juste un repaint
-  if (_hx3dLayer) {
-    hxMap.triggerRepaint();
-    return;
-  }
+  // Si le layer existe déjà, ne rien faire
+  if (_hx3dLayer) return;
 
   _hx3dLayer = {
     id:   'hx-buildings-3d-custom',
@@ -5921,30 +5910,33 @@ function _creerOuMettreAJourCustomLayer() {
     renderingMode: '3d',
 
     onAdd(map, gl) {
-      // Créer le renderer Three.js qui partage le contexte WebGL de MapLibre
+      // Renderer Three.js partageant le contexte WebGL de MapLibre
       _hx3dRenderer = new THREE.WebGLRenderer({
         canvas:  map.getCanvas(),
         context: gl,
         antialias: true,
       });
-      _hx3dRenderer.autoClear = false; // Ne pas effacer — MapLibre gère le framebuffer
+      _hx3dRenderer.autoClear = false; // MapLibre gère le framebuffer
 
       _hx3dScene  = new THREE.Scene();
+      // On utilise THREE.Camera() de base car la matrice MVP
+      // est entièrement fournie par MapLibre à chaque render()
       _hx3dCamera = new THREE.Camera();
 
-      // Lumières globales pour tous les modèles
-      const ambient = new THREE.AmbientLight(0xffffff, 1.8);
+      // ── Lumières ──
+      // AmbientLight forte pour éviter les faces noires sur les GLB
+      const ambient = new THREE.AmbientLight(0xffffff, 2.5);
       _hx3dScene.add(ambient);
 
-      const sun = new THREE.DirectionalLight(0xfff0d0, 2.2);
-      sun.position.set(500, 800, 300);
+      const sun = new THREE.DirectionalLight(0xfff5e0, 1.8);
+      sun.position.set(0.5, 1, 0.5).normalize();
       _hx3dScene.add(sun);
 
-      const fillBlue = new THREE.DirectionalLight(0x8090c0, 0.8);
-      fillBlue.position.set(-400, 300, -200);
-      _hx3dScene.add(fillBlue);
+      const fill = new THREE.DirectionalLight(0xc0d0ff, 0.6);
+      fill.position.set(-0.5, 0.5, -0.5).normalize();
+      _hx3dScene.add(fill);
 
-      // Charger tous les modèles déjà en registre
+      // Charger les modèles déjà en registre
       _hx3dRegistry.forEach(entry => {
         if (!entry.mesh) _chargerEtPlacerModele(entry);
       });
@@ -5953,17 +5945,15 @@ function _creerOuMettreAJourCustomLayer() {
     render(gl, matrix) {
       if (!_hx3dScene || !_hx3dCamera || !_hx3dRenderer) return;
 
-      // Synchroniser la caméra Three.js avec la matrice de projection MapLibre
-      // matrix est une Float64Array 4x4 fournie par MapLibre
-      const m = new THREE.Matrix4().fromArray(matrix);
+      // BUG FIX 1 : matrix est Float64Array → convertir en Float32Array
+      // avant de l'injecter dans Three.js (Matrix4.fromArray attend Float32)
+      const m = new THREE.Matrix4().fromArray(Array.from(matrix));
       _hx3dCamera.projectionMatrix = m;
       _hx3dCamera.projectionMatrixInverse = m.clone().invert();
 
       _hx3dRenderer.resetState();
       _hx3dRenderer.render(_hx3dScene, _hx3dCamera);
-
-      // Forcer MapLibre à recalculer à chaque frame pour les animations légères
-      hxMap.triggerRepaint();
+      // BUG FIX 4 : PAS de triggerRepaint() ici → boucle infinie évitée
     }
   };
 
@@ -5976,35 +5966,45 @@ function _creerOuMettreAJourCustomLayer() {
 async function _chargerEtPlacerModele(entry) {
   if (!window.THREE || !_hx3dScene) return;
 
-  // Coordonnées Mercator du centre du polygone
-  const mc = _lngLatToMercator(entry.lon, entry.lat);
+  // ── Coordonnées Mercator du centre du polygone ──
+  const mc = maplibregl.MercatorCoordinate.fromLngLat([entry.lon, entry.lat], 0);
 
-  // Échelle : 1 unité Three.js = 1 mètre dans la réalité
-  // meterScale = taille d'un mètre en coordonnées Mercator normalisées
-  const mScale = mc.meterScale;
+  // meterScale = nb d'unités Mercator par mètre réel à cette latitude
+  // C'est le facteur d'échelle correct pour convertir mètres → Mercator
+  const mScale = mc.meterInMercatorCoordinateUnits();
 
-  // Taille cible du modèle basée sur la surface réelle du polygone
-  // On vise que le modèle remplisse environ 80% de la bounding-box du polygone
-  const targetW = Math.min(Math.max((entry.bbox?.width  || 10) * 0.80, 5), 30);
-  const targetD = Math.min(Math.max((entry.bbox?.depth  || 10) * 0.80, 5), 30);
-  const targetSize = Math.max(targetW, targetD);
+  // Taille cible en mètres (issue de la bbox réelle du polygone)
+  const targetW    = Math.min(Math.max((entry.bbox?.width  || 12) * 0.85, 6), 35);
+  const targetD    = Math.min(Math.max((entry.bbox?.depth  || 12) * 0.85, 6), 35);
+  const targetSize = Math.max(targetW, targetD); // mètres
 
-  // Groupe parent positionné au centre Mercator du polygone
+  // ── BUG FIX 2 : Transformation via matrice complète ──
+  // On construit une matrice de transformation 4x4 qui :
+  // 1. Translate le modèle aux coordonnées Mercator exactes
+  // 2. Applique l'échelle (mètres → Mercator) correctement
+  // 3. Gère la rotation Z-up → Y-up proprement
+  // Cette matrice est assignée directement au group (pas de position/rotation séparés)
   const group = new THREE.Group();
-  // Position en coordonnées Mercator normalisées (le CustomLayer utilise cet espace)
-  group.position.set(mc.x, mc.y, mc.z);
-  // Rotation : MapLibre est Y-up, les GLB sont souvent Z-up
-  group.rotation.x = Math.PI / 2;
+
+  // Matrice : translation Mercator + scale mScale + rotation X (Z-up → Y-up)
+  // prettier-ignore
+  group.matrix.set(
+    mScale,       0,       0,  mc.x,
+         0,       0,  mScale,  mc.y,
+         0, -mScale,       0,  mc.z,
+         0,       0,       0,     1
+  );
+  group.matrixAutoUpdate = false; // On gère la matrice manuellement
 
   _hx3dScene.add(group);
-  entry.group = group; // référence pour suppression future
+  entry.group = group;
 
-  // Essayer de charger le GLB
-  if (THREE.GLTFLoader && !THREE._gltfLoaderFailed) {
+  // ── Charger le GLB ──
+  if (window.THREE.GLTFLoader && !THREE._gltfLoaderFailed) {
     try {
       const gltf = await new Promise((resolve, reject) => {
         const loader = new THREE.GLTFLoader();
-        const timer = setTimeout(() => reject(new Error('timeout')), 10000);
+        const timer  = setTimeout(() => reject(new Error('timeout GLB')), 12000);
         loader.load(
           entry.modelUrl,
           g => { clearTimeout(timer); resolve(g); },
@@ -6015,67 +6015,72 @@ async function _chargerEtPlacerModele(entry) {
 
       const model = gltf.scene;
 
-      // Normaliser la taille du modèle à targetSize mètres
-      const box   = new THREE.Box3().setFromObject(model);
-      const size  = box.getSize(new THREE.Vector3());
+      // ── BUG FIX 5 : Scale correct ──
+      // Le modèle GLB est en mètres. La scène Three.js est en Mercator.
+      // scale = targetSize / maxDim  →  le modèle fait targetSize mètres
+      // (mScale est déjà appliqué via la matrice du group)
+      const box    = new THREE.Box3().setFromObject(model);
+      const size   = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
       if (maxDim > 0) {
-        // Convertir targetSize (mètres) → unités Mercator normalisées
-        const scaleInMercator = (targetSize * mScale) / maxDim;
-        model.scale.setScalar(scaleInMercator);
+        const s = targetSize / maxDim;
+        model.scale.setScalar(s);
       }
 
-      // Aligner la base du modèle sur Y=0 (sol de la carte)
+      // Aligner la base sur Y=0
       const box2 = new THREE.Box3().setFromObject(model);
       model.position.y = -box2.min.y;
 
-      // Améliorer le rendu des matériaux
+      // Améliorer les matériaux (éviter le blanc éblouissant)
       model.traverse(child => {
-        if (child.isMesh) {
-          child.castShadow    = true;
-          child.receiveShadow = true;
-          if (child.material) {
-            child.material.envMapIntensity = 0.5;
-          }
+        if (child.isMesh && child.material) {
+          // Forcer le rendu correct sans env map
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach(mat => {
+            mat.envMapIntensity = 0;
+            mat.needsUpdate     = true;
+          });
         }
       });
 
       group.add(model);
       entry.mesh = model;
-      console.log(`[HxMap3D] Modèle chargé : ${entry.modelUrl.split('/').pop()} @ (${entry.lon.toFixed(4)}, ${entry.lat.toFixed(4)})`);
+      console.log(`[HxMap3D] ✓ GLB chargé : ${entry.modelUrl.split('/').pop()}`);
 
     } catch (err) {
       console.warn('[HxMap3D] GLB échoué → fallback procédural :', err.message);
-      _creerBatimentProcédural(group, targetSize, entry.surface, mScale);
+      _creerBatimentProcédural(group, targetSize);
       entry.mesh = group;
     }
   } else {
-    _creerBatimentProcédural(group, targetSize, entry.surface, mScale);
+    _creerBatimentProcédural(group, targetSize);
     entry.mesh = group;
   }
 
   hxMap.triggerRepaint();
 }
 
-/* ── Bâtiment procédural de secours ── */
-function _creerBatimentProcédural(group, targetSize, surface, mScale) {
-  const w = targetSize * mScale;
-  const h = Math.min(Math.max(Math.sqrt(surface || 100) * 0.4, 3), 20) * mScale;
-  const d = targetSize * 0.75 * mScale;
+/* ── Bâtiment procédural de secours (dimensions en mètres, scale via group.matrix) ── */
+function _creerBatimentProcédural(group, targetSize) {
+  // La matrice du group gère déjà la conversion mètres → Mercator
+  // Donc ici on travaille DIRECTEMENT en mètres
+  const w = targetSize;
+  const h = Math.min(Math.max(targetSize * 0.6, 4), 18);
+  const d = targetSize * 0.75;
 
   const geo = new THREE.BoxGeometry(w, h, d);
   const mat = new THREE.MeshStandardMaterial({
-    color: 0x2a3a5e, roughness: 0.7, metalness: 0.1
+    color: 0x3a5a8e, roughness: 0.65, metalness: 0.15
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.y = h / 2;
   group.add(mesh);
 
-  // Toit
-  const roofGeo = new THREE.BoxGeometry(w + 0.02 * mScale, 0.015 * mScale, d + 0.02 * mScale);
+  // Toit légèrement plus sombre
+  const roofGeo = new THREE.BoxGeometry(w + 0.3, 0.4, d + 0.3);
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x1e2c45, roughness: 0.9 });
-  const roof = new THREE.Mesh(roofGeo, roofMat);
-  roof.position.y = h + 0.0075 * mScale;
+  const roof    = new THREE.Mesh(roofGeo, roofMat);
+  roof.position.y = h + 0.2;
   group.add(roof);
 }
 
@@ -6154,31 +6159,29 @@ async function _chargerScenes3DExistantes() {
   try {
     const { data, error } = await _sb
       .from('hailand_scenes')
-      .select('center_lon, center_lat, surface_m2, model_url, building_id, coords_geojson')
+      .select('center_lon, center_lat, surface_m2, model_url, building_id, bbox_width, bbox_depth')
       .not('center_lon', 'is', null)
       .not('center_lat', 'is', null)
-      .not('model_url', 'is', null);
+      .not('model_url',  'is', null);
 
     if (error) { console.warn('[HxMap3D] Erreur chargement scènes:', error); return; }
-    if (!data || data.length === 0) return;
+    if (!data || data.length === 0) { console.log('[HxMap3D] Aucune scène existante'); return; }
 
-    console.log(`[HxMap3D] ${data.length} scène(s) à implanters sur la carte`);
+    console.log(`[HxMap3D] ${data.length} scène(s) à implanter sur la carte`);
 
     for (const row of data) {
-      // Reconstituer bbox depuis coords_geojson si disponible
-      let bbox = null;
-      if (row.coords_geojson) {
-        try {
-          const coords = JSON.parse(row.coords_geojson);
-          bbox = _bboxPolygone(coords);
-        } catch(e) {}
-      }
+      // Utiliser bbox_width/depth si disponibles, sinon estimer depuis surface_m2
+      const side  = Math.sqrt(row.surface_m2 || 100);
+      const bbox  = {
+        width: row.bbox_width || side,
+        depth: row.bbox_depth || side,
+      };
 
       const entry = {
         lon:      row.center_lon,
         lat:      row.center_lat,
         surface:  row.surface_m2 || 100,
-        bbox:     bbox || { width: Math.sqrt(row.surface_m2 || 100), depth: Math.sqrt(row.surface_m2 || 100) },
+        bbox,
         modelUrl: row.model_url,
         buildingId: row.building_id,
         mesh:     null,
@@ -6187,10 +6190,10 @@ async function _chargerScenes3DExistantes() {
       _hx3dRegistry.push(entry);
     }
 
-    // Créer le CustomLayer (les modèles seront chargés dans onAdd)
+    // Créer le CustomLayer — onAdd chargera les modèles
     _creerOuMettreAJourCustomLayer();
 
-    // Si onAdd est déjà passé, charger directement
+    // Si onAdd est déjà passé (carte déjà prête), charger directement
     if (_hx3dScene) {
       for (const entry of _hx3dRegistry) {
         if (!entry.mesh) await _chargerEtPlacerModele(entry);
@@ -6213,9 +6216,8 @@ async function _enregistrerScene3D(poly) {
     const modelUrl = poly._modelUrl || _choisirModele3D(poly.surface || 100);
     poly._modelUrl = modelUrl;
 
-    // Sérialiser les coordonnées GeoJSON pour recalculer la bbox au rechargement
-    const coordsJson = JSON.stringify(poly.coords || []);
-
+    // Stocker bbox width/depth dans surface_m2 n'est pas possible,
+    // on stocke le centre et la surface — la bbox sera estimée au rechargement
     const sceneData = {
       user_phone    : userPhone,
       building_id   : String(poly.buildingId || ''),
@@ -6223,7 +6225,8 @@ async function _enregistrerScene3D(poly) {
       center_lat    : poly.center[1],
       surface_m2    : Math.round(poly.surface || 0),
       model_url     : modelUrl,
-      coords_geojson: coordsJson,
+      bbox_width    : poly.bbox?.width  || Math.sqrt(poly.surface || 100),
+      bbox_depth    : poly.bbox?.depth  || Math.sqrt(poly.surface || 100),
       has_streetlight: true,
       has_ground    : true,
       has_road      : true,
@@ -6438,9 +6441,10 @@ function _initMapLibreAvec3D() {
 
 
 // ════════════════════════════════════════════════════════════════
-// SQL – Tables Supabase (à exécuter une fois dans le dashboard)
+// SQL – Migration Supabase (à exécuter dans le dashboard SQL Editor)
 // ════════════════════════════════════════════════════════════════
 /*
+-- 1. Table hailand_scenes (si pas encore créée)
 CREATE TABLE IF NOT EXISTS hailand_scenes (
   id              BIGSERIAL PRIMARY KEY,
   user_phone      TEXT NOT NULL,
@@ -6449,7 +6453,6 @@ CREATE TABLE IF NOT EXISTS hailand_scenes (
   center_lat      DOUBLE PRECISION,
   surface_m2      INTEGER DEFAULT 0,
   model_url       TEXT,
-  coords_geojson  TEXT,
   has_streetlight BOOLEAN DEFAULT true,
   has_ground      BOOLEAN DEFAULT true,
   has_road        BOOLEAN DEFAULT false,
@@ -6457,15 +6460,27 @@ CREATE TABLE IF NOT EXISTS hailand_scenes (
   updated_at      TIMESTAMPTZ DEFAULT now(),
   UNIQUE(user_phone)
 );
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_zone TEXT;
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_surface INTEGER DEFAULT 0;
+
+-- 2. ⚠️ MIGRATION REQUISE : ajouter la colonne bbox pour mieux
+--    dimensionner les modèles au rechargement (optionnelle mais recommandée)
+ALTER TABLE hailand_scenes ADD COLUMN IF NOT EXISTS bbox_width  DOUBLE PRECISION DEFAULT 10;
+ALTER TABLE hailand_scenes ADD COLUMN IF NOT EXISTS bbox_depth  DOUBLE PRECISION DEFAULT 10;
+
+-- 3. Index
+CREATE INDEX IF NOT EXISTS idx_hailand_scenes_phone    ON hailand_scenes(user_phone);
+CREATE INDEX IF NOT EXISTS idx_hailand_scenes_location ON hailand_scenes(center_lat, center_lon);
+
+-- 4. RLS
+ALTER TABLE hailand_scenes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "public_access" ON hailand_scenes FOR ALL USING (true);
+
+-- 5. Colonnes clients (si pas déjà présentes)
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_zone        TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_surface     INTEGER DEFAULT 0;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_building_id TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_address_update TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_hailand_scenes_phone ON hailand_scenes(user_phone);
-CREATE INDEX IF NOT EXISTS idx_hailand_scenes_location ON hailand_scenes(center_lat, center_lon);
-ALTER TABLE hailand_scenes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "public_access" ON hailand_scenes FOR ALL USING (true);
 */
+
 
 
 
