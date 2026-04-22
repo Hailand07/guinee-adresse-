@@ -1646,27 +1646,12 @@ body {
 .vente-row .vente-info { font-size:.8rem; color:var(--muted); margin-top:2px; }
 .vente-row .vente-total { font-family:'Sora',sans-serif; color:var(--brand); font-weight:800; font-size:1rem; }
 
+
 /* ══════════════════════════════════════════════════════
-   3D SCENE OVERLAY – Verrouillage de polygone vivant
+   IMPLANTATION 3D – Indicateurs UI (loading, panel)
+   Le rendu 3D se fait directement dans le canvas MapLibre
+   via CustomLayerInterface — pas d'overlay séparé
 ══════════════════════════════════════════════════════ */
-#scene3d-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 8000;
-  pointer-events: none;
-  background: transparent;
-  display: block;        /* toujours dans le flux DOM pour que le canvas existe */
-  visibility: hidden;   /* caché visuellement jusqu'à .active */
-}
-#scene3d-overlay.active {
-  visibility: visible;
-  pointer-events: auto;
-}
-#scene3d-canvas {
-  /* NE PAS mettre width/height en CSS — WebGL a besoin des attributs HTML */
-  display: block;
-  pointer-events: auto; /* le canvas doit recevoir touch/mouse pour l'interaction 3D */
-}
 
 /* Panel de sélection polygone */
 .polygon-select-panel {
@@ -1722,7 +1707,7 @@ body {
   border: 1px solid var(--border) !important;
 }
 
-/* Barre de progression chargement 3D */
+/* Barre de progression implantation 3D */
 .scene3d-loading {
   position: fixed;
   top: 50%;
@@ -1734,7 +1719,7 @@ body {
   padding: 22px 28px;
   text-align: center;
   z-index: 9998;
-  min-width: 240px;
+  min-width: 260px;
   display: none;
 }
 .scene3d-loading.visible { display: block; }
@@ -1756,24 +1741,8 @@ body {
   background: var(--brand);
   border-radius: 99px;
   width: 0%;
-  transition: width .3s ease;
+  transition: width .35s ease;
 }
-.scene3d-info-badge {
-  position: fixed;
-  top: 80px;
-  right: 14px;
-  background: rgba(13,15,20,.92);
-  border: 1px solid var(--border, #2A3348);
-  border-radius: var(--radius-sm, 12px);
-  padding: 6px 12px;
-  font-size: .72rem;
-  color: var(--brand, #00C851);
-  font-weight: 700;
-  pointer-events: auto;
-  z-index: 9997;
-  display: none;
-}
-.scene3d-info-badge.visible { display: block; }
 .polygon-highlight-pulse {
   animation: polygonPulse 1.8s ease-in-out infinite;
 }
@@ -2620,25 +2589,21 @@ async function afficherClient() {
         <button class="btn btn-danger btn-sm" onclick="annulerItineraire()">✕</button>
       </div>
 
-      <!-- Overlay 3D Three.js (canvas par-dessus la carte) -->
-      <div id="scene3d-overlay">
-        <canvas id="scene3d-canvas"></canvas>
-      </div>
+      <!-- Indicateur de chargement implantation 3D -->
       <div class="scene3d-loading" id="scene3d-loading">
-        <p>⚙️ Génération de la scène 3D…</p>
+        <p>⚙️ Implantation du bâtiment 3D sur la carte…</p>
         <div class="scene3d-progress-bar">
           <div class="scene3d-progress-fill" id="scene3d-progress"></div>
         </div>
       </div>
-      <div class="scene3d-info-badge" id="scene3d-badge">🏗️ Vue 3D active</div>
 
-      <!-- Panel sélection polygone (nouveau clic) -->
+      <!-- Panel sélection polygone -->
       <div class="polygon-select-panel hidden" id="polygon-select-panel">
         <h4>📍 Polygone sélectionné</h4>
         <p class="ps-info" id="polygon-select-desc">Chargement des infos…</p>
         <div class="ps-btns">
           <button class="ps-btn-cancel" onclick="annulerSelectionPolygone()">✕ Annuler</button>
-          <button class="ps-btn-lock" onclick="confirmerVerrouillage3D()">🔒 Verrouiller & Générer 3D</button>
+          <button class="ps-btn-lock" onclick="confirmerVerrouillage3D()">🔒 Verrouiller & Implanter 3D</button>
         </div>
       </div>
 
@@ -4730,6 +4695,9 @@ async function ouvrirHailandMap() {
   if(!mapInitialized) {
     await _initMapLibre();
     mapInitialized = true;
+    // Charger les bâtiments 3D existants de tous les utilisateurs sur la carte
+    // Attendre que la carte soit stable avant de charger
+    setTimeout(() => _chargerScenes3DExistantes(), 1200);
   } else {
     hxMap.resize();
   }
@@ -5597,18 +5565,8 @@ function annulerVerrouillage() {
   toast('Verrouillage annulé','');
 }
 
-/* ─── Calcul de surface (formule de Gauss/Shoelace °→m²) ─── */
-function calculerSurface(coords) {
-  let area = 0;
-  const n = coords.length;
-  for(let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    area += coords[i][0] * coords[j][1];
-    area -= coords[j][0] * coords[i][1];
-  }
-  // 1° lat ≈ 111 319 m ; approximation suffisante pour Conakry
-  return Math.abs(area) * 111319 * 111319 / 2;
-}
+/* ─── Calcul de surface (formule de Gauss/Shoelace °→m²) - définie dans le moteur 3D ─── */
+// calculerSurface() est définie dans le moteur 3D ci-dessous
 
 /* ─── Enregistrer l'adresse dans Supabase ─── */
 async function enregistrerAdresseHailandX(coords, surface, buildingId) {
@@ -5819,14 +5777,16 @@ function demarrerTrackingLivreur(missionId) {
 }
 
 
+
 // ════════════════════════════════════════════════════════════════
-// HAILANDMAP 3D ENGINE – Clic sur polygone → scène 3D immersive
-// Modèles GLB depuis Supabase, sol, lampadaire, route de proximité
+// HAILANDMAP 3D ENGINE – Bâtiments GLB ancrés sur la carte
+// Technique : MapLibre CustomLayerInterface + Three.js partagé
+// Les modèles s'implantent aux coordonnées exactes du polygone
+// et persistent sur la carte comme Google Maps / Snapchat Map
 // ════════════════════════════════════════════════════════════════
 
-/* ── Catalogue des assets 3D (extrait du bucket Supabase) ── */
+/* ── Catalogue des assets 3D (Supabase Storage) ── */
 const ASSETS_3D = {
-  // Bâtiments principaux (GLB seuls, sans .bin séparé)
   buildings: [
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kenny_city_suburban/building-type-t.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kenny_city_suburban/building-type-l.glb',
@@ -5834,7 +5794,6 @@ const ASSETS_3D = {
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kenny_city_suburban/building-type-p.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kenny_city_suburban/building-type-s.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kenny_city_suburban/building-type-b.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kenny_city_suburban/building-type-h.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kenny_city_suburban/building-type-h.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kenny_city_suburban/building-type-m.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kenny_city_suburban/building-type-n.glb',
@@ -5856,7 +5815,7 @@ const ASSETS_3D = {
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-e.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-f.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-g.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-h.glb',
+    'https://plisyaquigigmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-h.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-i.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-j.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-k.glb',
@@ -5866,86 +5825,437 @@ const ASSETS_3D = {
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-skyscraper-a.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-skyscraper-b.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-skyscraper-c.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-skyscraper-d.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-skyscraper-e.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-a.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-b.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-c.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-d.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-e.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-f.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-g.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-h.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-i.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-j.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-k.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-l.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-m.glb',
-    'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-n.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-wide-a.glb',
     'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/low-detail-building-wide-b.glb',
   ],
-  // Route droite (utilisée pour la portion adjacente)
-  road: 'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kaykit_city/road_straight.gltf',
-  // Lampadaire
-  streetlight: 'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kaykit_city/streetlight.gltf',
-  // Arbre/buisson pour végétation autour
-  tree: 'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kenny_city_suburban/tree-small.glb',
 };
 
-/* ── État de la sélection de polygone ── */
-let _selectedPolygon  = null; // { coords, surface, buildingId, center, bbox }
-let _scene3dActive    = false;
-let _scene3dRenderer  = null;
-let _scene3dScene     = null;
-let _scene3dCamera    = null;
-let _scene3dAnimId    = null;
-let _scene3dInteract  = { isDragging:false, lastX:0, lastY:0, lastPinch:0 };
+/* ══════════════════════════════════════════════════════
+   MOTEUR CUSTOM LAYER – Three.js dans le WebGL MapLibre
+   ══════════════════════════════════════════════════════
+   Principe :
+   1. Un seul CustomLayerInterface est ajouté à la carte
+   2. Il partage le WebGLRenderingContext de MapLibre
+   3. Chaque modèle GLB = un objet Three.js positionné
+      en coordonnées Mercator normalisées
+   4. Quand la carte bouge/pivote/zoome, Three.js recalcule
+      la matrice caméra depuis la projection MapLibre →
+      les modèles restent collés au sol de la carte
+═══════════════════════════════════════════════════════ */
 
-/* ─── Choisir le meilleur modèle selon la surface du polygone ─── */
-function _choisirModele3D(surface) {
-  const buildings = ASSETS_3D.buildings;
-  // Petit polygone (<80m²) → maison basse
-  if (surface < 80)  return buildings[Math.floor(Math.random() * 12)]; // suburban
-  // Moyen (<300m²) → bâtiment standard
-  if (surface < 300) return buildings[12 + Math.floor(Math.random() * 9)]; // industrial
-  // Grand (<1000m²) → immeuble
-  if (surface < 1000) {
-    const idx = 21 + Math.floor(Math.random() * 14);
-    return buildings[idx]; // building-a à n
-  }
-  // Très grand → skyscraper
-  const idx = 35 + Math.floor(Math.random() * 5);
-  return buildings[idx]; // skyscrapers
+// ── Registre des modèles implantés sur la carte ──
+const _hx3dRegistry = [];   // [{ lon, lat, surface, modelUrl, bbox }]
+let   _hx3dLayer    = null; // instance CustomLayerInterface active
+let   _hx3dScene    = null; // THREE.Scene partagée
+let   _hx3dCamera   = null; // THREE.Camera synchronisée avec MapLibre
+let   _hx3dRenderer = null; // THREE.WebGLRenderer (canvas MapLibre)
+
+/* ── Conversion lon/lat → coordonnées Mercator MapLibre ── */
+function _lngLatToMercator(lon, lat) {
+  // MapLibre normalise Mercator sur [0,1]² → multiplier par 2^zoom ne suffit pas
+  // On utilise la formule MercatorCoordinate de MapLibre
+  const mc = maplibregl.MercatorCoordinate.fromLngLat([lon, lat], 0);
+  return { x: mc.x, y: mc.y, z: mc.z, meterScale: mc.meterInMercatorCoordinateUnits() };
 }
 
-/* ─── Calculer le barycentre d'un polygone GeoJSON [lon,lat] ─── */
+/* ── Choisir le modèle selon la surface ── */
+function _choisirModele3D(surface) {
+  const b = ASSETS_3D.buildings;
+  if (surface < 80)   return b[Math.floor(Math.random() * 11)];       // suburban
+  if (surface < 300)  return b[11 + Math.floor(Math.random() * 9)];   // industrial
+  if (surface < 1000) return b[20 + Math.floor(Math.random() * 14)];  // standard
+  return b[34 + Math.floor(Math.random() * (b.length - 34))];          // large
+}
+
+/* ── Calcul barycentre polygone [lon,lat] ── */
 function _centrePolygone(coords) {
   let lon = 0, lat = 0;
   coords.forEach(c => { lon += c[0]; lat += c[1]; });
   return [lon / coords.length, lat / coords.length];
 }
 
-/* ─── Calculer la bbox du polygone ─── */
+/* ── Calcul bbox polygone ── */
 function _bboxPolygone(coords) {
   const lons = coords.map(c => c[0]);
-  const lats = coords.map(c => c[1]);
+  const lats  = coords.map(c => c[1]);
   return {
     minLon: Math.min(...lons), maxLon: Math.max(...lons),
-    minLat: Math.min(...lats), maxLat: Math.max(...lats),
-    width: (Math.max(...lons) - Math.min(...lons)) * 111319,
-    depth: (Math.max(...lats) - Math.min(...lats)) * 111319,
+    minLat: Math.min(...lats),  maxLat: Math.max(...lats),
+    width:  (Math.max(...lons) - Math.min(...lons)) * 111319,
+    depth:  (Math.max(...lats)  - Math.min(...lats)) * 111319,
   };
 }
 
-/* ─── Activer le mode "clic sur polygone" sur la carte ─── */
-let _clicPolygoneActif = false; // guard anti-double-déclenchement
+/* ── Calcul surface (formule Shoelace °→m²) ── */
+function calculerSurface(coords) {
+  let area = 0;
+  const n = coords.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area += coords[i][0] * coords[j][1];
+    area -= coords[j][0] * coords[i][1];
+  }
+  return Math.abs(area) * 111319 * 111319 / 2;
+}
 
+/* ═══════════════════════════════════════════════════
+   CUSTOM LAYER MAPLIBRE
+   Crée ou met à jour le layer Three.js sur la carte
+═══════════════════════════════════════════════════ */
+function _creerOuMettreAJourCustomLayer() {
+  if (!hxMap) return;
+
+  // Si le layer existe déjà, on déclenche juste un repaint
+  if (_hx3dLayer) {
+    hxMap.triggerRepaint();
+    return;
+  }
+
+  _hx3dLayer = {
+    id:   'hx-buildings-3d-custom',
+    type: 'custom',
+    renderingMode: '3d',
+
+    onAdd(map, gl) {
+      // Créer le renderer Three.js qui partage le contexte WebGL de MapLibre
+      _hx3dRenderer = new THREE.WebGLRenderer({
+        canvas:  map.getCanvas(),
+        context: gl,
+        antialias: true,
+      });
+      _hx3dRenderer.autoClear = false; // Ne pas effacer — MapLibre gère le framebuffer
+
+      _hx3dScene  = new THREE.Scene();
+      _hx3dCamera = new THREE.Camera();
+
+      // Lumières globales pour tous les modèles
+      const ambient = new THREE.AmbientLight(0xffffff, 1.8);
+      _hx3dScene.add(ambient);
+
+      const sun = new THREE.DirectionalLight(0xfff0d0, 2.2);
+      sun.position.set(500, 800, 300);
+      _hx3dScene.add(sun);
+
+      const fillBlue = new THREE.DirectionalLight(0x8090c0, 0.8);
+      fillBlue.position.set(-400, 300, -200);
+      _hx3dScene.add(fillBlue);
+
+      // Charger tous les modèles déjà en registre
+      _hx3dRegistry.forEach(entry => {
+        if (!entry.mesh) _chargerEtPlacerModele(entry);
+      });
+    },
+
+    render(gl, matrix) {
+      if (!_hx3dScene || !_hx3dCamera || !_hx3dRenderer) return;
+
+      // Synchroniser la caméra Three.js avec la matrice de projection MapLibre
+      // matrix est une Float64Array 4x4 fournie par MapLibre
+      const m = new THREE.Matrix4().fromArray(matrix);
+      _hx3dCamera.projectionMatrix = m;
+      _hx3dCamera.projectionMatrixInverse = m.clone().invert();
+
+      _hx3dRenderer.resetState();
+      _hx3dRenderer.render(_hx3dScene, _hx3dCamera);
+
+      // Forcer MapLibre à recalculer à chaque frame pour les animations légères
+      hxMap.triggerRepaint();
+    }
+  };
+
+  hxMap.addLayer(_hx3dLayer);
+}
+
+/* ═══════════════════════════════════════════════════
+   CHARGER UN MODÈLE GLB ET LE PLACER SUR LA CARTE
+═══════════════════════════════════════════════════ */
+async function _chargerEtPlacerModele(entry) {
+  if (!window.THREE || !_hx3dScene) return;
+
+  // Coordonnées Mercator du centre du polygone
+  const mc = _lngLatToMercator(entry.lon, entry.lat);
+
+  // Échelle : 1 unité Three.js = 1 mètre dans la réalité
+  // meterScale = taille d'un mètre en coordonnées Mercator normalisées
+  const mScale = mc.meterScale;
+
+  // Taille cible du modèle basée sur la surface réelle du polygone
+  // On vise que le modèle remplisse environ 80% de la bounding-box du polygone
+  const targetW = Math.min(Math.max((entry.bbox?.width  || 10) * 0.80, 5), 30);
+  const targetD = Math.min(Math.max((entry.bbox?.depth  || 10) * 0.80, 5), 30);
+  const targetSize = Math.max(targetW, targetD);
+
+  // Groupe parent positionné au centre Mercator du polygone
+  const group = new THREE.Group();
+  // Position en coordonnées Mercator normalisées (le CustomLayer utilise cet espace)
+  group.position.set(mc.x, mc.y, mc.z);
+  // Rotation : MapLibre est Y-up, les GLB sont souvent Z-up
+  group.rotation.x = Math.PI / 2;
+
+  _hx3dScene.add(group);
+  entry.group = group; // référence pour suppression future
+
+  // Essayer de charger le GLB
+  if (THREE.GLTFLoader && !THREE._gltfLoaderFailed) {
+    try {
+      const gltf = await new Promise((resolve, reject) => {
+        const loader = new THREE.GLTFLoader();
+        const timer = setTimeout(() => reject(new Error('timeout')), 10000);
+        loader.load(
+          entry.modelUrl,
+          g => { clearTimeout(timer); resolve(g); },
+          undefined,
+          e => { clearTimeout(timer); reject(e); }
+        );
+      });
+
+      const model = gltf.scene;
+
+      // Normaliser la taille du modèle à targetSize mètres
+      const box   = new THREE.Box3().setFromObject(model);
+      const size  = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      if (maxDim > 0) {
+        // Convertir targetSize (mètres) → unités Mercator normalisées
+        const scaleInMercator = (targetSize * mScale) / maxDim;
+        model.scale.setScalar(scaleInMercator);
+      }
+
+      // Aligner la base du modèle sur Y=0 (sol de la carte)
+      const box2 = new THREE.Box3().setFromObject(model);
+      model.position.y = -box2.min.y;
+
+      // Améliorer le rendu des matériaux
+      model.traverse(child => {
+        if (child.isMesh) {
+          child.castShadow    = true;
+          child.receiveShadow = true;
+          if (child.material) {
+            child.material.envMapIntensity = 0.5;
+          }
+        }
+      });
+
+      group.add(model);
+      entry.mesh = model;
+      console.log(`[HxMap3D] Modèle chargé : ${entry.modelUrl.split('/').pop()} @ (${entry.lon.toFixed(4)}, ${entry.lat.toFixed(4)})`);
+
+    } catch (err) {
+      console.warn('[HxMap3D] GLB échoué → fallback procédural :', err.message);
+      _creerBatimentProcédural(group, targetSize, entry.surface, mScale);
+      entry.mesh = group;
+    }
+  } else {
+    _creerBatimentProcédural(group, targetSize, entry.surface, mScale);
+    entry.mesh = group;
+  }
+
+  hxMap.triggerRepaint();
+}
+
+/* ── Bâtiment procédural de secours ── */
+function _creerBatimentProcédural(group, targetSize, surface, mScale) {
+  const w = targetSize * mScale;
+  const h = Math.min(Math.max(Math.sqrt(surface || 100) * 0.4, 3), 20) * mScale;
+  const d = targetSize * 0.75 * mScale;
+
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x2a3a5e, roughness: 0.7, metalness: 0.1
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.y = h / 2;
+  group.add(mesh);
+
+  // Toit
+  const roofGeo = new THREE.BoxGeometry(w + 0.02 * mScale, 0.015 * mScale, d + 0.02 * mScale);
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x1e2c45, roughness: 0.9 });
+  const roof = new THREE.Mesh(roofGeo, roofMat);
+  roof.position.y = h + 0.0075 * mScale;
+  group.add(roof);
+}
+
+/* ═══════════════════════════════════════════════════
+   ENREGISTRER ET AFFICHER UN NOUVEAU BÂTIMENT 3D
+   Appelé après confirmation du polygone
+═══════════════════════════════════════════════════ */
+async function _implanter3DSurCarte(poly) {
+  // Choisir le modèle une seule fois
+  const modelUrl = poly._modelUrl || _choisirModele3D(poly.surface || 100);
+  poly._modelUrl = modelUrl;
+
+  const entry = {
+    lon:      poly.center[0],
+    lat:      poly.center[1],
+    surface:  poly.surface || 100,
+    bbox:     poly.bbox,
+    modelUrl: modelUrl,
+    mesh:     null,
+    group:    null,
+  };
+
+  _hx3dRegistry.push(entry);
+
+  // S'assurer que le CustomLayer existe (crée si nécessaire)
+  _creerOuMettreAJourCustomLayer();
+
+  // Si le layer est déjà initialisé (onAdd déjà appelé), charger maintenant
+  if (_hx3dScene) {
+    await _chargerEtPlacerModele(entry);
+  }
+  // Sinon onAdd le fera automatiquement en itérant _hx3dRegistry
+
+  // Recentrer la carte sur le nouveau bâtiment avec un beau pitch
+  hxMap.flyTo({
+    center:   [entry.lon, entry.lat],
+    zoom:     17.5,
+    pitch:    60,
+    bearing:  -20,
+    duration: 1800,
+    essential: true,
+  });
+
+  // Masquer l'extrusion plate du bâtiment OSM sous-jacent
+  // (optionnel — on cache via filter pour ne pas polluer visuellement)
+  _masquerExtrusionSousjacente(poly.buildingId);
+
+  toast('🏗️ Bâtiment 3D implanté sur HailandMap !', 'success');
+  if (navigator.vibrate) navigator.vibrate([60, 30, 60]);
+}
+
+/* ── Masquer l'extrusion fill-extrusion du bâtiment OSM sous-jacent ── */
+// (évite le doublon visuel entre l'extrusion flat et le GLB)
+let _masquésBuildingIds = [];
+function _masquerExtrusionSousjacente(buildingId) {
+  if (!buildingId || String(buildingId).startsWith('est_') || String(buildingId).startsWith('fallback_')) return;
+  _masquésBuildingIds.push(String(buildingId));
+  ['building-shadow','hailand-buildings-3d','hailand-buildings-roof'].forEach(layerId => {
+    try {
+      if (!hxMap.getLayer(layerId)) return;
+      hxMap.setFilter(layerId, [
+        'all',
+        ['!=', ['get', 'hide_3d'], true],
+        ['!', ['in', ['to-string', ['id']], ['literal', _masquésBuildingIds]]]
+      ]);
+    } catch(e) { /* filter non critique */ }
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   CHARGER TOUTES LES SCÈNES EXISTANTES DEPUIS SUPABASE
+   Appelé au démarrage de la carte
+═══════════════════════════════════════════════════ */
+async function _chargerScenes3DExistantes() {
+  if (!hxMap) return;
+  try {
+    const { data, error } = await _sb
+      .from('hailand_scenes')
+      .select('center_lon, center_lat, surface_m2, model_url, building_id, coords_geojson')
+      .not('center_lon', 'is', null)
+      .not('center_lat', 'is', null)
+      .not('model_url', 'is', null);
+
+    if (error) { console.warn('[HxMap3D] Erreur chargement scènes:', error); return; }
+    if (!data || data.length === 0) return;
+
+    console.log(`[HxMap3D] ${data.length} scène(s) à implanters sur la carte`);
+
+    for (const row of data) {
+      // Reconstituer bbox depuis coords_geojson si disponible
+      let bbox = null;
+      if (row.coords_geojson) {
+        try {
+          const coords = JSON.parse(row.coords_geojson);
+          bbox = _bboxPolygone(coords);
+        } catch(e) {}
+      }
+
+      const entry = {
+        lon:      row.center_lon,
+        lat:      row.center_lat,
+        surface:  row.surface_m2 || 100,
+        bbox:     bbox || { width: Math.sqrt(row.surface_m2 || 100), depth: Math.sqrt(row.surface_m2 || 100) },
+        modelUrl: row.model_url,
+        buildingId: row.building_id,
+        mesh:     null,
+        group:    null,
+      };
+      _hx3dRegistry.push(entry);
+    }
+
+    // Créer le CustomLayer (les modèles seront chargés dans onAdd)
+    _creerOuMettreAJourCustomLayer();
+
+    // Si onAdd est déjà passé, charger directement
+    if (_hx3dScene) {
+      for (const entry of _hx3dRegistry) {
+        if (!entry.mesh) await _chargerEtPlacerModele(entry);
+      }
+    }
+
+  } catch(e) {
+    console.error('[HxMap3D] Exception chargerScenes3DExistantes:', e);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   ENREGISTRER LA SCÈNE DANS SUPABASE
+═══════════════════════════════════════════════════ */
+async function _enregistrerScene3D(poly) {
+  try {
+    const userPhone = sess('hx_phone');
+    if (!userPhone) { console.warn('[HxMap3D] Pas de session – enregistrement ignoré'); return; }
+
+    const modelUrl = poly._modelUrl || _choisirModele3D(poly.surface || 100);
+    poly._modelUrl = modelUrl;
+
+    // Sérialiser les coordonnées GeoJSON pour recalculer la bbox au rechargement
+    const coordsJson = JSON.stringify(poly.coords || []);
+
+    const sceneData = {
+      user_phone    : userPhone,
+      building_id   : String(poly.buildingId || ''),
+      center_lon    : poly.center[0],
+      center_lat    : poly.center[1],
+      surface_m2    : Math.round(poly.surface || 0),
+      model_url     : modelUrl,
+      coords_geojson: coordsJson,
+      has_streetlight: true,
+      has_ground    : true,
+      has_road      : true,
+      updated_at    : new Date().toISOString(),
+    };
+
+    const { error } = await _sb
+      .from('hailand_scenes')
+      .upsert(sceneData, { onConflict: 'user_phone' });
+
+    if (error) {
+      console.error('[HxMap3D] Erreur Supabase hailand_scenes:', error);
+      toast('⚠️ Sauvegarde 3D échouée : ' + error.message, 'warn');
+    } else {
+      console.log('[HxMap3D] Scène enregistrée ✓');
+    }
+  } catch(e) {
+    console.error('[HxMap3D] Exception _enregistrerScene3D:', e);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   ÉTAT DE LA SÉLECTION DE POLYGONE
+═══════════════════════════════════════════════════ */
+let _selectedPolygon  = null;
+let _clicPolygoneActif = false;
+
+/* ── Activer le mode clic sur polygone ── */
 function _activerClicPolygone() {
   if (!hxMap || _clicPolygoneActif) return;
   _clicPolygoneActif = true;
 
-  // Curseur pointer sur les bâtiments (desktop)
   hxMap.on('mouseenter', 'hailand-buildings-3d', () => {
     hxMap.getCanvas().style.cursor = 'pointer';
   });
@@ -5953,11 +6263,11 @@ function _activerClicPolygone() {
     hxMap.getCanvas().style.cursor = '';
   });
 
-  // ── Clic / Tap unifié ──
   hxMap.on('click', async (e) => {
-    if (_scene3dActive) return;
+    // Ignorer si un panel est déjà ouvert
+    const panel = document.getElementById('polygon-select-panel');
+    if (panel && !panel.classList.contains('hidden')) return;
 
-    // queryRenderedFeatures sur plusieurs layers pour maximiser les chances de hit
     const layersToCheck = ['hailand-buildings-3d', 'building-shadow', 'hailand-buildings-roof'];
     const existingLayers = layersToCheck.filter(id => {
       try { return !!hxMap.getLayer(id); } catch(x) { return false; }
@@ -5965,94 +6275,67 @@ function _activerClicPolygone() {
 
     let features = [];
     if (existingLayers.length > 0) {
-      // Élargir le rayon de détection (utile sur mobile)
       const bbox = [
-        [e.point.x - 10, e.point.y - 10],
-        [e.point.x + 10, e.point.y + 10]
+        [e.point.x - 12, e.point.y - 12],
+        [e.point.x + 12, e.point.y + 12]
       ];
       features = hxMap.queryRenderedFeatures(bbox, { layers: existingLayers });
     }
 
-    if (features.length === 0) {
-      // Rien de cliqué → on essaie via Overpass au point exact
-      // mais seulement si un polygone est déjà sélectionné (évite requêtes intempestives)
-      if (_selectedPolygon) {
-        annulerSelectionPolygone();
-      }
-      // Tentative Overpass en background (silencieuse)
-      _chargerPolygoneOverpass(e.lngLat.lat, e.lngLat.lng);
-      return;
-    }
+    const lon = e.lngLat.lng;
+    const lat = e.lngLat.lat;
 
-    const feat = features[0];
-    let coords = null;
-    const geom = feat.geometry;
-
-    if (geom && geom.type === 'Polygon' && geom.coordinates && geom.coordinates[0]) {
-      coords = geom.coordinates[0]; // [[lon,lat],...]
-    } else if (geom && geom.type === 'MultiPolygon' && geom.coordinates) {
-      // Prendre le plus grand anneau
-      coords = geom.coordinates.reduce((best, ring) =>
-        ring[0].length > (best ? best.length : 0) ? ring[0] : best, null);
-    }
-
-    if (coords && coords.length >= 3) {
+    if (features.length > 0 && features[0].geometry?.coordinates) {
+      const geom = features[0].geometry;
+      const coords = geom.type === 'Polygon'
+        ? geom.coordinates[0].map(c => [c[0], c[1]])
+        : [[lon - 0.0001, lat - 0.0001],[lon + 0.0001, lat - 0.0001],
+           [lon + 0.0001, lat + 0.0001],[lon - 0.0001, lat + 0.0001]];
       const surface = calculerSurface(coords.map(c => [c[1], c[0]]));
       const center  = _centrePolygone(coords);
-      const bbox    = _bboxPolygone(coords);
-      _selectionnerPolygone(coords, surface, feat.id || 'poly_' + Date.now(), center, bbox);
+      const bbox_   = _bboxPolygone(coords);
+      _selectionnerPolygone(coords, surface, features[0].id || features[0].properties?.id || 'map_' + Date.now(), center, bbox_);
     } else {
-      // Géométrie absente dans les tuiles → fallback Overpass
-      await _chargerPolygoneOverpass(e.lngLat.lat, e.lngLat.lng);
+      // Estimation + Overpass en arrière-plan
+      const dEst = 0.00012;
+      const coordsEst = [
+        [lon - dEst, lat + dEst],[lon + dEst, lat + dEst],
+        [lon + dEst, lat - dEst],[lon - dEst, lat - dEst],
+        [lon - dEst, lat + dEst]
+      ];
+      const surfEst = Math.round(dEst * 2 * 111319 * dEst * 2 * 111319);
+      _selectionnerPolygone(coordsEst, surfEst, 'est_' + Date.now(),
+        [lon, lat], _bboxPolygone(coordsEst));
+
+      // Affiner avec Overpass
+      try {
+        const query = `[out:json];way["building"](around:20,${lat},${lon});out geom;`;
+        const r     = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query),
+          { signal: AbortSignal.timeout(7000) });
+        const data  = await r.json();
+        if (data.elements?.length > 0) {
+          const bat    = data.elements[0];
+          const coords = bat.geometry.map(p => [p.lon, p.lat]);
+          const surface= calculerSurface(coords.map(c => [c[1], c[0]]));
+          const center = _centrePolygone(coords);
+          const bboxC  = _bboxPolygone(coords);
+          _selectionnerPolygone(coords, surface, bat.id, center, bboxC);
+        }
+      } catch(err) { /* garder l'estimation */ }
     }
   });
 }
 
-/* ─── Charger via Overpass si la géométrie n'est pas dans les tuiles ─── */
-async function _chargerPolygoneOverpass(lat, lon) {
-  // Afficher immédiatement un panel avec zone estimée (fallback rapide)
-  const dEst = 0.00012; // ~13m de côté
-  const coordsEst = [
-    [lon - dEst, lat + dEst], [lon + dEst, lat + dEst],
-    [lon + dEst, lat - dEst], [lon - dEst, lat - dEst],
-    [lon - dEst, lat + dEst]
-  ];
-  const surfEst = Math.round(dEst * 2 * 111319 * dEst * 2 * 111319);
-  const centerEst = [lon, lat];
-  const bboxEst = _bboxPolygone(coordsEst);
-  _selectionnerPolygone(coordsEst, surfEst, 'est_' + Date.now(), centerEst, bboxEst);
-
-  // Requête Overpass en arrière-plan pour affiner
-  try {
-    const query = `[out:json];way["building"](around:20,${lat},${lon});out geom;`;
-    const url   = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
-    const r     = await fetch(url, { signal: AbortSignal.timeout(7000) });
-    const data  = await r.json();
-    if (data.elements && data.elements.length > 0) {
-      const bat    = data.elements[0];
-      const coords = bat.geometry.map(p => [p.lon, p.lat]);
-      const surface= calculerSurface(coords.map(c => [c[1], c[0]]));
-      const center = _centrePolygone(coords);
-      const bbox   = _bboxPolygone(coords);
-      // Mettre à jour le panel avec les vraies données
-      _selectionnerPolygone(coords, surface, bat.id, center, bbox);
-    }
-  } catch(e) { /* garder l'estimation si Overpass échoue */ }
-}
-
-/* ─── Sélectionner un polygone et afficher le panel ─── */
+/* ── Sélectionner un polygone et afficher le panel de confirmation ── */
 function _selectionnerPolygone(coords, surface, buildingId, center, bbox) {
-  // Effacer l'ancienne sélection
   _effacerSelectionVisuelle();
-
-  // Stocker
   _selectedPolygon = { coords, surface, buildingId, center, bbox };
 
   // Surligner le polygone sur la carte
   const sourceId = 'hx-selected-polygon';
   const geojsonCoords = [...coords];
   if (geojsonCoords[0][0] !== geojsonCoords[geojsonCoords.length-1][0])
-    geojsonCoords.push(geojsonCoords[0]); // fermer
+    geojsonCoords.push(geojsonCoords[0]);
 
   try {
     if (hxMap.getSource(sourceId)) {
@@ -6072,29 +6355,20 @@ function _selectionnerPolygone(coords, surface, buildingId, center, bbox) {
     }
   } catch(e) { console.warn('Selection polygon:', e); }
 
-  // Centrer la vue sur le polygone (sans masquer le panel)
-  hxMap.flyTo({
-    center: center,
-    zoom: Math.min(hxMap.getZoom() + 0.5, 18),
-    duration: 500,
-    essential: true
-  });
+  hxMap.flyTo({ center, zoom: Math.min(hxMap.getZoom() + 0.5, 18), duration: 500, essential: true });
 
-  // Afficher le panel
   const panel = document.getElementById('polygon-select-panel');
   const desc  = document.getElementById('polygon-select-desc');
   if (desc) desc.innerHTML = `
     Surface : <strong style="color:var(--brand)">${Math.round(surface)} m²</strong><br>
     Position : ${center[1].toFixed(5)}°, ${center[0].toFixed(5)}°<br>
-    <em style="font-size:.72rem">Voulez-vous verrouiller cet emplacement et générer sa scène 3D ?</em>
+    <em style="font-size:.72rem">Verrouiller et implanter le bâtiment 3D à cet emplacement ?</em>
   `;
   if (panel) panel.classList.remove('hidden');
-
-  // Vibration tactile
   if (navigator.vibrate) navigator.vibrate(40);
 }
 
-/* ─── Effacer la sélection visuelle ─── */
+/* ── Effacer la sélection visuelle ── */
 function _effacerSelectionVisuelle() {
   ['hx-sel-fill','hx-sel-line'].forEach(id => {
     try { if(hxMap && hxMap.getLayer(id)) hxMap.removeLayer(id); } catch(e){}
@@ -6102,7 +6376,7 @@ function _effacerSelectionVisuelle() {
   try { if(hxMap && hxMap.getSource('hx-selected-polygon')) hxMap.removeSource('hx-selected-polygon'); } catch(e){}
 }
 
-/* ─── Annuler la sélection ─── */
+/* ── Annuler la sélection ── */
 function annulerSelectionPolygone() {
   _selectedPolygon = null;
   _effacerSelectionVisuelle();
@@ -6110,528 +6384,89 @@ function annulerSelectionPolygone() {
   if (panel) panel.classList.add('hidden');
 }
 
-/* ─── Confirmer et générer la scène 3D ─── */
+/* ═══════════════════════════════════════════════════
+   CONFIRMER → SAUVEGARDER + IMPLANTER SUR LA CARTE
+═══════════════════════════════════════════════════ */
 async function confirmerVerrouillage3D() {
   if (!_selectedPolygon) return;
 
   const panel = document.getElementById('polygon-select-panel');
   if (panel) panel.classList.add('hidden');
 
-  // 1. Enregistrer l'adresse dans la table clients (coords en [lat,lon])
+  // Afficher indicateur de chargement
+  const loading  = document.getElementById('scene3d-loading');
+  const progress = document.getElementById('scene3d-progress');
+  if (loading)  loading.classList.add('visible');
+  if (progress) progress.style.width = '20%';
+
   const { coords, surface, buildingId } = _selectedPolygon;
+
+  // 1. Enregistrer l'adresse dans la table clients
   await enregistrerAdresseHailandX(
-    coords.map(c => [c[1], c[0]]), // reconvertir [lon,lat] → [lat,lon] pour le stockage
+    coords.map(c => [c[1], c[0]]),  // [lon,lat] → [lat,lon] pour stockage
     surface,
     buildingId
   );
+  if (progress) progress.style.width = '45%';
 
-  // 2. Générer la scène 3D EN PREMIER (cela définit poly._modelUrl)
-  await _genererScene3D(_selectedPolygon);
-
-  // 3. Enregistrer les métadonnées 3D dans hailand_scenes (après que _modelUrl est défini)
+  // 2. Choisir le modèle et l'enregistrer dans hailand_scenes
+  _selectedPolygon._modelUrl = _choisirModele3D(surface);
   await _enregistrerScene3D(_selectedPolygon);
+  if (progress) progress.style.width = '70%';
+
+  // 3. Implanter le modèle 3D directement sur la carte
+  await _implanter3DSurCarte(_selectedPolygon);
+  if (progress) progress.style.width = '100%';
+
+  // Masquer le loading après un court délai
+  setTimeout(() => {
+    if (loading)  loading.classList.remove('visible');
+    if (progress) progress.style.width = '0%';
+  }, 800);
+
+  _effacerSelectionVisuelle();
+  _selectedPolygon = null;
 }
 
-/* ─── Enregistrer la scène 3D dans Supabase ─── */
-async function _enregistrerScene3D(poly) {
-  try {
-    const userPhone = sess('hx_phone');
-    if (!userPhone) {
-      console.warn('[Scene3D] Pas de téléphone en session – enregistrement ignoré');
-      return;
-    }
-
-    // Utiliser le modelUrl déjà choisi par _genererScene3D (évite double aléatoire)
-    const modelUrl = poly._modelUrl || _choisirModele3D(poly.surface || 100);
-
-    const sceneData = {
-      user_phone    : userPhone,
-      building_id   : String(poly.buildingId),
-      center_lon    : poly.center[0],
-      center_lat    : poly.center[1],
-      surface_m2    : Math.round(poly.surface),
-      model_url     : modelUrl,
-      has_streetlight: true,
-      has_ground    : true,
-      has_road      : true,
-      updated_at    : new Date().toISOString()
-    };
-
-    const { error } = await _sb
-      .from('hailand_scenes')
-      .upsert(sceneData, { onConflict: 'user_phone' });
-
-    if (error) {
-      console.error('[Scene3D] Erreur Supabase hailand_scenes:', error);
-      toast('⚠️ Sauvegarde scène 3D échouée : ' + error.message, 'warn');
-    } else {
-      console.log('[Scene3D] Scène enregistrée dans hailand_scenes ✓');
-    }
-  } catch(e) {
-    console.error('[Scene3D] _enregistrerScene3D exception:', e);
-  }
-}
-
-/* ─── Générer la scène 3D Three.js par-dessus la carte ─── */
-async function _genererScene3D(poly) {
-  // ── Guard : éviter double lancement ──
-  if (_scene3dActive) { fermerScene3D(); await new Promise(r => setTimeout(r, 200)); }
-
-  const loading  = document.getElementById('scene3d-loading');
-  const progress = document.getElementById('scene3d-progress');
-  const badge    = document.getElementById('scene3d-badge');
-  const overlay  = document.getElementById('scene3d-overlay');
-  const canvas   = document.getElementById('scene3d-canvas');
-
-  if (!canvas || !overlay) {
-    toast('❌ Canvas 3D introuvable', 'error');
-    return;
-  }
-
-  // Vérifier que Three.js est chargé
-  if (!window.THREE) {
-    toast('❌ Three.js non chargé', 'error');
-    return;
-  }
-
-  try {
-    // ── Afficher loading (avant d'activer l'overlay) ──
-    if (loading) loading.classList.add('visible');
-    _setProgress(progress, 5);
-
-    // ── Dimensions : utiliser l'écran entier ──
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-
-    // Attributs HTML du canvas (obligatoire pour WebGL) — AVANT d'activer l'overlay
-    canvas.setAttribute('width',  w);
-    canvas.setAttribute('height', h);
-    canvas.style.width  = w + 'px';
-    canvas.style.height = h + 'px';
-
-    // Activer l'overlay APRÈS avoir dimensionné le canvas
-    overlay.classList.add('active');
-
-    // Attendre un frame pour que le DOM applique les styles
-    await new Promise(r => requestAnimationFrame(r));
-
-    // ── Initialiser Three.js WebGLRenderer ──
-    let renderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-    } catch(e) {
-      toast('❌ WebGL non supporté sur cet appareil', 'error');
-      if (loading) loading.classList.remove('visible');
-      overlay.classList.remove('active');
-      return;
-    }
-    renderer.setSize(w, h, false); // false = ne pas modifier le CSS
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.shadowMap.enabled = true;
-    renderer.setClearColor(0x0a0c14, 1); // fond sombre opaque
-
-    const scene  = new THREE.Scene();
-    scene.fog    = new THREE.Fog(0x0a0c14, 25, 90);
-    scene.background = new THREE.Color(0x0a0c14);
-
-    const aspect = w / h;
-    const camera = new THREE.PerspectiveCamera(55, aspect, 0.1, 300);
-    // Position initiale fixe — pas d'orbite auto au démarrage
-    camera.position.set(0, 12, 22);
-    camera.lookAt(0, 3, 0);
-
-    _scene3dRenderer = renderer;
-    _scene3dScene    = scene;
-    _scene3dCamera   = camera;
-    _scene3dActive   = true;
-
-    // ── Lumières ──
-    scene.add(new THREE.AmbientLight(0x2a3555, 1.2));
-
-    const moon = new THREE.DirectionalLight(0x6080bb, 1.8);
-    moon.position.set(-15, 25, 10);
-    moon.castShadow = true;
-    moon.shadow.mapSize.set(512, 512);
-    scene.add(moon);
-
-    const lampLight = new THREE.PointLight(0xF5A623, 4.0, 18);
-    lampLight.position.set(-5, 5, 2);
-    scene.add(lampLight);
-
-    const fillLight2 = new THREE.PointLight(0x00C851, 0.6, 12);
-    fillLight2.position.set(8, 3, -4);
-    scene.add(fillLight2);
-
-    _setProgress(progress, 18);
-
-    // ── Sol (dimensionné selon le vrai polygone) ──
-    const bboxW = poly.bbox?.width  || 10;
-    const bboxD = poly.bbox?.depth  || 10;
-    const gSize = Math.max(bboxW, bboxD, 15) * 2.2;
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(gSize, gSize),
-      new THREE.MeshStandardMaterial({ color: 0x0e1320, roughness: 1.0 })
-    );
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    scene.add(ground);
-
-    // Grille béton
-    const grid = new THREE.GridHelper(gSize, Math.min(Math.ceil(gSize), 30), 0x1e2a40, 0x161f30);
-    grid.position.y = 0.01;
-    scene.add(grid);
-
-    // Rendu immédiat pour montrer le sol
-    renderer.render(scene, camera);
-    _setProgress(progress, 30);
-
-    // ── Choisir UN SEUL modèle (réutilisé pour Supabase et la scène) ──
-    const modelUrl = _choisirModele3D(poly.surface || 100);
-    poly._modelUrl = modelUrl; // stocker pour _enregistrerScene3D
-
-    // ── Lampadaire ──
-    const lampLoaded = await _chargerGLTFSafe(ASSETS_3D.streetlight);
-    if (lampLoaded) {
-      _normaliserModele(lampLoaded.scene, 5);
-      lampLoaded.scene.position.set(-5, 0, 1);
-      scene.add(lampLoaded.scene);
-    } else {
-      _creerLampadaireProc(scene, -5, 0, 1);
-    }
-    renderer.render(scene, camera);
-    _setProgress(progress, 48);
-
-    // ── Bâtiment principal (GLB ou procédural) ──
-    const bldgLoaded = await _chargerGLTFSafe(modelUrl);
-    if (bldgLoaded) {
-      const bldg = bldgLoaded.scene;
-      const cible = Math.min(Math.max(bboxW * 0.75, 5), 16);
-      _normaliserModele(bldg, cible);
-      bldg.castShadow = true;
-      bldg.receiveShadow = true;
-      // Centrer le bâtiment à l'origine (position du polygone)
-      bldg.position.set(0, 0, 0);
-      scene.add(bldg);
-    } else {
-      _creerBatimentProc(scene, poly.surface || 120);
-    }
-    renderer.render(scene, camera);
-    _setProgress(progress, 68);
-
-    // ── Route adjacente ──
-    const routeProche = await _verifierProximitéRoute(poly.center[1], poly.center[0]);
-    if (routeProche) {
-      const roadLoaded = await _chargerGLTFSafe(ASSETS_3D.road);
-      const rx = bboxW / 2 + 5;
-      if (roadLoaded) {
-        const r1 = roadLoaded.scene; _normaliserModele(r1, 9);
-        r1.position.set(rx, 0, 0); r1.rotation.y = Math.PI/2; scene.add(r1);
-        const r2 = r1.clone(); r2.position.set(rx, 0, 9); scene.add(r2);
-      } else {
-        _creerRouteProc(scene, rx);
-      }
-    }
-    renderer.render(scene, camera);
-    _setProgress(progress, 84);
-
-    // ── Arbres ──
-    const treeLoaded = await _chargerGLTFSafe(ASSETS_3D.tree);
-    const hw = bboxW / 2;
-    [[-hw - 2, 0, -3], [hw + 1, 0, -5]].forEach(pos => {
-      if (treeLoaded) {
-        const t = treeLoaded.scene.clone(); _normaliserModele(t, 3);
-        t.position.set(...pos); scene.add(t);
-      }
-    });
-
-    _setProgress(progress, 100);
-    renderer.render(scene, camera);
-
-    // ── Cacher loading + montrer badge ──
-    await new Promise(r => setTimeout(r, 400));
-    if (loading) loading.classList.remove('visible');
-    if (badge) badge.classList.add('visible');
-
-    // ── Interaction touch/mouse ──
-    _initInteraction3D(canvas, camera);
-
-    // ── Boucle d'animation (orbite UNIQUEMENT si l'utilisateur ne touche pas) ──
-    let tick = 0;
-    let autoOrbit = false; // pas d'orbite au démarrage — se lance après 3s d'inactivité
-    let inactivityTimer = setTimeout(() => { autoOrbit = true; }, 3000);
-
-    canvas.addEventListener('touchstart', () => { autoOrbit = false; clearTimeout(inactivityTimer); }, { passive: true });
-    canvas.addEventListener('mousedown',  () => { autoOrbit = false; clearTimeout(inactivityTimer); });
-
-    function animate() {
-      _scene3dAnimId = requestAnimationFrame(animate);
-      tick += 0.012;
-      lampLight.intensity = 3.6 + Math.sin(tick * 2.3) * 0.5;
-      if (autoOrbit && !_scene3dInteract.isDragging) {
-        camera.position.x = Math.sin(tick * 0.15) * 22;
-        camera.position.z = Math.cos(tick * 0.15) * 22;
-        camera.position.y = 10 + Math.sin(tick * 0.08) * 2;
-        camera.lookAt(0, 3, 0);
-      }
-      renderer.render(scene, camera);
-    }
-    animate();
-
-    _ajouterBoutonFermer3D();
-    toast('🏗️ Scène 3D générée !', 'success');
-    if (navigator.vibrate) navigator.vibrate([60, 30, 60]);
-
-  } catch(err) {
-    console.error('[Scene3D] Erreur fatale :', err);
-    toast('⚠️ Scène 3D : ' + (err.message || 'erreur'), 'error');
-    if (loading) loading.classList.remove('visible');
-    overlay.classList.remove('active');
-    _scene3dActive = false;
-  }
-}
-
-/* ─── Charger GLTF avec timeout et gestion d'erreur propre ─── */
-async function _chargerGLTFSafe(url, timeoutMs = 8000) {
-  if (!window.THREE) return null;
-  if (!THREE.GLTFLoader || THREE._gltfLoaderFailed) {
-    console.warn('[Scene3D] GLTFLoader absent → fallback procédural');
-    return null;
-  }
-  return new Promise(resolve => {
-    const timer = setTimeout(() => {
-      console.warn('[Scene3D] Timeout GLB:', url);
-      resolve(null);
-    }, timeoutMs);
-    try {
-      const loader = new THREE.GLTFLoader();
-      loader.load(
-        url,
-        gltf => { clearTimeout(timer); resolve(gltf); },
-        undefined,
-        err  => { clearTimeout(timer); console.warn('[Scene3D] Erreur GLB:', url, err); resolve(null); }
-      );
-    } catch(e) {
-      clearTimeout(timer);
-      console.warn('[Scene3D] GLTFLoader exception:', e);
-      resolve(null);
-    }
-  });
-}
-
-/* ─── Mettre à jour la barre de progression ─── */
-function _setProgress(el, pct) {
-  if (el) el.style.width = pct + '%';
-}
-
-/* _chargerGLTF remplacé par _chargerGLTFSafe */
-
-/* ─── Normaliser la taille d'un modèle chargé ─── */
-function _normaliserModele(obj, targetSize) {
-  const box = new THREE.Box3().setFromObject(obj);
-  const size = box.getSize(new THREE.Vector3());
-  const maxDim = Math.max(size.x, size.y, size.z);
-  if (maxDim > 0) {
-    const scale = targetSize / maxDim;
-    obj.scale.set(scale, scale, scale);
-  }
-  // Aligner le bas sur Y=0
-  const box2 = new THREE.Box3().setFromObject(obj);
-  obj.position.y -= box2.min.y;
-}
-
-/* ─── Fallback lampadaire procédural ─── */
-function _creerLampadaireProc(scene, x, y, z) {
-  const matMetal = new THREE.MeshStandardMaterial({ color: 0x334055, roughness: 0.6, metalness: 0.8 });
-  // Poteau
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 5, 8), matMetal);
-  pole.position.set(x, y + 2.5, z);
-  pole.castShadow = true;
-  scene.add(pole);
-  // Tête
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8),
-    new THREE.MeshStandardMaterial({ color: 0xF5A623, emissive: 0xF5A623, emissiveIntensity: 1.2 }));
-  head.position.set(x, y + 5.2, z);
-  scene.add(head);
-}
-
-/* ─── Fallback bâtiment procédural ─── */
-function _creerBatimentProc(scene, surface) {
-  const w = Math.min(Math.max(Math.sqrt(surface) * 0.6, 4), 14);
-  const h = 6 + Math.random() * 8;
-  const geo = new THREE.BoxGeometry(w, h, w * 0.75);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x1e2840, roughness: 0.7, metalness: 0.1
-  });
-  const bldg = new THREE.Mesh(geo, mat);
-  bldg.position.y = h / 2;
-  bldg.castShadow = true;
-  bldg.receiveShadow = true;
-  scene.add(bldg);
-  // Toit
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0x2a3650, roughness: 0.9 });
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, 0.3, w * 0.75 + 0.4), roofMat);
-  roof.position.y = h + 0.15;
-  scene.add(roof);
-}
-
-/* ─── Fallback route procédurale ─── */
-function _creerRouteProc(scene, x) {
-  const roadMat = new THREE.MeshStandardMaterial({ color: 0x1c2235, roughness: 0.95 });
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(16, 5), roadMat);
-  road.rotation.x = -Math.PI / 2;
-  road.position.set(x + 4, 0.005, 0);
-  scene.add(road);
-  // Lignes blanches
-  const lineMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0 });
-  for (let i = -6; i <= 6; i += 3) {
-    const line = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 1.2), lineMat);
-    line.rotation.x = -Math.PI / 2;
-    line.position.set(x + 4, 0.006, i);
-    scene.add(line);
-  }
-}
-
-/* ─── Vérifier la proximité d'une route via Overpass ─── */
-async function _verifierProximitéRoute(lat, lon) {
-  try {
-    const query = `[out:json];way["highway"~"^(primary|secondary|residential|tertiary)$"](around:25,${lat},${lon});out count;`;
-    const url   = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
-    const r     = await fetch(url, { signal: AbortSignal.timeout(4000) });
-    const data  = await r.json();
-    return data.elements && data.elements.length > 0;
-  } catch(e) {
-    return true; // par défaut, on place la route (safe fallback)
-  }
-}
-
-/* ─── Gestion interaction souris/touch sur la scène 3D ─── */
-function _initInteraction3D(canvas, camera) {
-  const s = _scene3dInteract;
-
-  // Souris
-  canvas.addEventListener('mousedown', e => {
-    s.isDragging = true; s.lastX = e.clientX; s.lastY = e.clientY;
-  });
-  canvas.addEventListener('mouseup',   () => { s.isDragging = false; });
-  canvas.addEventListener('mousemove', e => {
-    if (!s.isDragging) return;
-    const dx = e.clientX - s.lastX;
-    const dy = e.clientY - s.lastY;
-    s.lastX = e.clientX; s.lastY = e.clientY;
-    // Rotation orbitale
-    const phi = Math.atan2(camera.position.x, camera.position.z) + dx * 0.008;
-    const r   = Math.sqrt(camera.position.x**2 + camera.position.z**2);
-    camera.position.x = Math.sin(phi) * r;
-    camera.position.z = Math.cos(phi) * r;
-    camera.position.y = Math.max(2, Math.min(40, camera.position.y - dy * 0.08));
-    camera.lookAt(0, 3, 0);
-  });
-  canvas.addEventListener('wheel', e => {
-    const r  = camera.position.length();
-    const nr = Math.max(6, Math.min(60, r + e.deltaY * 0.05));
-    camera.position.normalize().multiplyScalar(nr);
-    camera.lookAt(0, 3, 0);
-  }, { passive: true });
-
-  // Touch
-  canvas.addEventListener('touchstart', e => {
-    if (e.touches.length === 1) {
-      s.isDragging = true;
-      s.lastX = e.touches[0].clientX;
-      s.lastY = e.touches[0].clientY;
-    } else if (e.touches.length === 2) {
-      s.isDragging = false;
-      s.lastPinch = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-    }
-  }, { passive: true });
-  canvas.addEventListener('touchmove', e => {
-    if (e.touches.length === 1 && s.isDragging) {
-      const dx = e.touches[0].clientX - s.lastX;
-      const dy = e.touches[0].clientY - s.lastY;
-      s.lastX = e.touches[0].clientX;
-      s.lastY = e.touches[0].clientY;
-      const phi = Math.atan2(camera.position.x, camera.position.z) + dx * 0.01;
-      const r   = Math.sqrt(camera.position.x**2 + camera.position.z**2);
-      camera.position.x = Math.sin(phi) * r;
-      camera.position.z = Math.cos(phi) * r;
-      camera.position.y = Math.max(2, Math.min(40, camera.position.y - dy * 0.08));
-      camera.lookAt(0, 3, 0);
-    } else if (e.touches.length === 2) {
-      const pinch = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      const delta = s.lastPinch - pinch;
-      const r = Math.max(6, Math.min(60, camera.position.length() + delta * 0.12));
-      camera.position.normalize().multiplyScalar(r);
-      camera.lookAt(0, 3, 0);
-      s.lastPinch = pinch;
-    }
-  }, { passive: true });
-  canvas.addEventListener('touchend', () => { s.isDragging = false; }, { passive: true });
-}
-
-/* ─── Ajouter le bouton de fermeture de la vue 3D ─── */
-function _ajouterBoutonFermer3D() {
-  const badge = document.getElementById('scene3d-badge');
-  if (!badge) return;
-  badge.innerHTML = `🏗️ Vue 3D &nbsp;<button onclick="fermerScene3D()" style="
-    background:rgba(255,255,255,.12);border:none;color:#EEF0F6;
-    border-radius:6px;padding:2px 8px;font-size:.75rem;cursor:pointer;
-    font-weight:700;margin-left:4px
-  ">✕ Fermer</button>`;
-}
-
-/* ─── Fermer et détruire la scène 3D ─── */
-function fermerScene3D() {
-  if (_scene3dAnimId) { cancelAnimationFrame(_scene3dAnimId); _scene3dAnimId = null; }
-  if (_scene3dRenderer) { _scene3dRenderer.dispose(); _scene3dRenderer = null; }
-  if (_scene3dScene) {
-    _scene3dScene.traverse(obj => {
-      if (obj.geometry) obj.geometry.dispose();
-      if (obj.material) {
-        if (Array.isArray(obj.material)) obj.material.forEach(m=>m.dispose());
-        else obj.material.dispose();
-      }
-    });
-    _scene3dScene = null;
-  }
-  _scene3dCamera  = null;
-  _scene3dActive  = false;
-
-  // Vider le canvas (effacer le rendu WebGL)
-  const canvas  = document.getElementById('scene3d-canvas');
-  const overlay = document.getElementById('scene3d-overlay');
-  if (canvas) {
-    canvas.removeAttribute('width');
-    canvas.removeAttribute('height');
-    canvas.style.width  = '';
-    canvas.style.height = '';
-  }
-  // Masquer l'overlay via visibility (display reste block pour que le canvas existe)
-  if (overlay) { overlay.style.pointerEvents = 'none'; overlay.classList.remove('active'); }
-
-  const badge = document.getElementById('scene3d-badge');
-  const loading = document.getElementById('scene3d-loading');
-  if (badge)   { badge.classList.remove('visible'); badge.innerHTML = '🏗️ Vue 3D active'; }
-  if (loading) { loading.classList.remove('visible'); }
-
-  toast('Vue 3D fermée','');
-}
-
-/* ─── Hook : activer le clic polygone lors de l'init de la carte ─── */
+/* ── Hook : activer le clic polygone lors de l'init de la carte ── */
 const _origConfigurer = _configurerAmbiance;
-// On patche après le load de la carte
 const _origInitMapLibre = _initMapLibre;
 
-// On surcharge l'init pour injecter le clic polygone
 function _initMapLibreAvec3D() {
-  // La détection de clic polygone est déjà activée via setTimeout dans hxMap.on('load')
   return _origInitMapLibre();
 }
+
+
+// ════════════════════════════════════════════════════════════════
+// SQL – Tables Supabase (à exécuter une fois dans le dashboard)
+// ════════════════════════════════════════════════════════════════
+/*
+CREATE TABLE IF NOT EXISTS hailand_scenes (
+  id              BIGSERIAL PRIMARY KEY,
+  user_phone      TEXT NOT NULL,
+  building_id     TEXT,
+  center_lon      DOUBLE PRECISION,
+  center_lat      DOUBLE PRECISION,
+  surface_m2      INTEGER DEFAULT 0,
+  model_url       TEXT,
+  coords_geojson  TEXT,
+  has_streetlight BOOLEAN DEFAULT true,
+  has_ground      BOOLEAN DEFAULT true,
+  has_road        BOOLEAN DEFAULT false,
+  created_at      TIMESTAMPTZ DEFAULT now(),
+  updated_at      TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_phone)
+);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_zone TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_surface INTEGER DEFAULT 0;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_building_id TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_address_update TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_hailand_scenes_phone ON hailand_scenes(user_phone);
+CREATE INDEX IF NOT EXISTS idx_hailand_scenes_location ON hailand_scenes(center_lat, center_lon);
+ALTER TABLE hailand_scenes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_access" ON hailand_scenes FOR ALL USING (true);
+*/
+
 
 
 // ════════════════════════════════════════════════════════════════
