@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>HailandX 3D Map Test</title>
+    <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+    <script src="https://unpkg.com/@loaders.gl/gltf@latest/dist/dist.min.js"></script>
+    <style>
+      body { margin: 0; padding: 0; overflow: hidden; background: #111; }
+      #container { width: 100vw; height: 100vh; }
+    </style>
+  </head>
+  <body>
+    <div id="container"></div>
+    <script>
+      const {DeckGL, ScenegraphLayer} = deck;
+
+      // Données récupérées de ton fichier (Exemple pour le test)
+      const DATA = [
+        {
+          name: 'Building M',
+          url: 'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/hailand-assets-kenny_city_industrial/building-m.glb',
+          coords: [-13.6700, 9.5370],
+          scale: 20
+        },
+        {
+          name: 'Skyscraper',
+          url: 'https://plisyaquijijmwbbuegy.supabase.co/storage/v1/object/public/hailand-assets/building-skyscraper-a.glb',
+          coords: [-13.6710, 9.5385],
+          scale: 15
+        }
+      ];
+
+      new DeckGL({
+        container: 'container',
+        initialViewState: {
+          longitude: -13.6705,
+          latitude: 9.5375,
+          zoom: 17,
+          pitch: 60,
+          bearing: 30
+        },
+        controller: true,
+        layers: [
+          new ScenegraphLayer({
+            id: 'scenegraph-layer',
+            data: DATA,
+            pickable: true,
+            scenegraph: d => d.url,
+            getPosition: d => d.coords,
+            getOrientation: [0, 0, 0],
+            getScale: d => [d.scale, d.scale, d.scale],
+            sizeScale: 1,
+            _lighting: 'pbr'
+          })
+        ]
+      });
+    </script>
+  </body>
+</html>
