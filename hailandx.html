@@ -1655,15 +1655,17 @@ body {
   z-index: 8000;
   pointer-events: none;
   background: transparent;
-  display: none;
+  display: block;        /* toujours dans le flux DOM pour que le canvas existe */
+  visibility: hidden;   /* caché visuellement jusqu'à .active */
 }
 #scene3d-overlay.active {
-  display: block;
+  visibility: visible;
+  pointer-events: auto;
 }
 #scene3d-canvas {
   /* NE PAS mettre width/height en CSS — WebGL a besoin des attributs HTML */
   display: block;
-  pointer-events: none;
+  pointer-events: auto; /* le canvas doit recevoir touch/mouse pour l'interaction 3D */
 }
 
 /* Panel de sélection polygone */
@@ -6115,28 +6117,33 @@ async function confirmerVerrouillage3D() {
   const panel = document.getElementById('polygon-select-panel');
   if (panel) panel.classList.add('hidden');
 
-  // 1. Enregistrer dans Supabase (même logique que l'existant)
+  // 1. Enregistrer l'adresse dans la table clients (coords en [lat,lon])
   const { coords, surface, buildingId } = _selectedPolygon;
   await enregistrerAdresseHailandX(
-    coords.map(c => [c[1], c[0]]), // reconvertir en [lat,lon] pour le stockage
+    coords.map(c => [c[1], c[0]]), // reconvertir [lon,lat] → [lat,lon] pour le stockage
     surface,
     buildingId
   );
 
-  // 2. Enregistrer les métadonnées 3D dans la table hailand_scenes
-  await _enregistrerScene3D(_selectedPolygon);
-
-  // 3. Générer la scène 3D
+  // 2. Générer la scène 3D EN PREMIER (cela définit poly._modelUrl)
   await _genererScene3D(_selectedPolygon);
+
+  // 3. Enregistrer les métadonnées 3D dans hailand_scenes (après que _modelUrl est défini)
+  await _enregistrerScene3D(_selectedPolygon);
 }
 
 /* ─── Enregistrer la scène 3D dans Supabase ─── */
 async function _enregistrerScene3D(poly) {
   try {
     const userPhone = sess('hx_phone');
-    if (!userPhone) return;
+    if (!userPhone) {
+      console.warn('[Scene3D] Pas de téléphone en session – enregistrement ignoré');
+      return;
+    }
 
-    const modelUrl = _choisirModele3D(poly.surface);
+    // Utiliser le modelUrl déjà choisi par _genererScene3D (évite double aléatoire)
+    const modelUrl = poly._modelUrl || _choisirModele3D(poly.surface || 100);
+
     const sceneData = {
       user_phone    : userPhone,
       building_id   : String(poly.buildingId),
@@ -6147,13 +6154,22 @@ async function _enregistrerScene3D(poly) {
       has_streetlight: true,
       has_ground    : true,
       has_road      : true,
-      created_at    : new Date().toISOString()
+      updated_at    : new Date().toISOString()
     };
 
-    await _sb.from('hailand_scenes')
-      .upsert(sceneData, { onConflict: 'user_phone' })
-      .catch(e => console.warn('Scene save:', e));
-  } catch(e) { console.warn('_enregistrerScene3D:', e); }
+    const { error } = await _sb
+      .from('hailand_scenes')
+      .upsert(sceneData, { onConflict: 'user_phone' });
+
+    if (error) {
+      console.error('[Scene3D] Erreur Supabase hailand_scenes:', error);
+      toast('⚠️ Sauvegarde scène 3D échouée : ' + error.message, 'warn');
+    } else {
+      console.log('[Scene3D] Scène enregistrée dans hailand_scenes ✓');
+    }
+  } catch(e) {
+    console.error('[Scene3D] _enregistrerScene3D exception:', e);
+  }
 }
 
 /* ─── Générer la scène 3D Three.js par-dessus la carte ─── */
@@ -6179,28 +6195,30 @@ async function _genererScene3D(poly) {
   }
 
   try {
-    // ── Afficher loading ──
+    // ── Afficher loading (avant d'activer l'overlay) ──
     if (loading) loading.classList.add('visible');
     _setProgress(progress, 5);
 
-    // ── Dimensions : utiliser l'écran entier (fixed overlay) ──
+    // ── Dimensions : utiliser l'écran entier ──
     const w = window.innerWidth;
     const h = window.innerHeight;
 
-    // Attributs HTML du canvas (obligatoire pour WebGL)
+    // Attributs HTML du canvas (obligatoire pour WebGL) — AVANT d'activer l'overlay
     canvas.setAttribute('width',  w);
     canvas.setAttribute('height', h);
     canvas.style.width  = w + 'px';
     canvas.style.height = h + 'px';
 
-    // Activer l'overlay (le rendre visible)
+    // Activer l'overlay APRÈS avoir dimensionné le canvas
     overlay.classList.add('active');
-    overlay.style.pointerEvents = 'auto';
+
+    // Attendre un frame pour que le DOM applique les styles
+    await new Promise(r => requestAnimationFrame(r));
 
     // ── Initialiser Three.js WebGLRenderer ──
     let renderer;
     try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
     } catch(e) {
       toast('❌ WebGL non supporté sur cet appareil', 'error');
       if (loading) loading.classList.remove('visible');
@@ -6218,8 +6236,9 @@ async function _genererScene3D(poly) {
 
     const aspect = w / h;
     const camera = new THREE.PerspectiveCamera(55, aspect, 0.1, 300);
+    // Position initiale fixe — pas d'orbite auto au démarrage
     camera.position.set(0, 12, 22);
-    camera.lookAt(0, 2, 0);
+    camera.lookAt(0, 3, 0);
 
     _scene3dRenderer = renderer;
     _scene3dScene    = scene;
@@ -6239,12 +6258,16 @@ async function _genererScene3D(poly) {
     lampLight.position.set(-5, 5, 2);
     scene.add(lampLight);
 
-    const fillLight2 = new THREE.PointLight(0x00C851, 0.6, 12); fillLight2.position.set(8, 3, -4); scene.add(fillLight2);
+    const fillLight2 = new THREE.PointLight(0x00C851, 0.6, 12);
+    fillLight2.position.set(8, 3, -4);
+    scene.add(fillLight2);
 
     _setProgress(progress, 18);
 
-    // ── Sol ──
-    const gSize = Math.max((poly.bbox?.width||10), (poly.bbox?.depth||10), 15) * 2.2;
+    // ── Sol (dimensionné selon le vrai polygone) ──
+    const bboxW = poly.bbox?.width  || 10;
+    const bboxD = poly.bbox?.depth  || 10;
+    const gSize = Math.max(bboxW, bboxD, 15) * 2.2;
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(gSize, gSize),
       new THREE.MeshStandardMaterial({ color: 0x0e1320, roughness: 1.0 })
@@ -6258,11 +6281,15 @@ async function _genererScene3D(poly) {
     grid.position.y = 0.01;
     scene.add(grid);
 
-    // Rendu immédiat dès le sol pour montrer que ça marche
+    // Rendu immédiat pour montrer le sol
     renderer.render(scene, camera);
     _setProgress(progress, 30);
 
-    // ── Lampadaire (GLB ou procédural) ──
+    // ── Choisir UN SEUL modèle (réutilisé pour Supabase et la scène) ──
+    const modelUrl = _choisirModele3D(poly.surface || 100);
+    poly._modelUrl = modelUrl; // stocker pour _enregistrerScene3D
+
+    // ── Lampadaire ──
     const lampLoaded = await _chargerGLTFSafe(ASSETS_3D.streetlight);
     if (lampLoaded) {
       _normaliserModele(lampLoaded.scene, 5);
@@ -6275,13 +6302,15 @@ async function _genererScene3D(poly) {
     _setProgress(progress, 48);
 
     // ── Bâtiment principal (GLB ou procédural) ──
-    const modelUrl  = _choisirModele3D(poly.surface || 100);
     const bldgLoaded = await _chargerGLTFSafe(modelUrl);
     if (bldgLoaded) {
       const bldg = bldgLoaded.scene;
-      const cible = Math.min(Math.max((poly.bbox?.width||8) * 0.75, 5), 16);
+      const cible = Math.min(Math.max(bboxW * 0.75, 5), 16);
       _normaliserModele(bldg, cible);
-      bldg.castShadow = bldg.receiveShadow = true;
+      bldg.castShadow = true;
+      bldg.receiveShadow = true;
+      // Centrer le bâtiment à l'origine (position du polygone)
+      bldg.position.set(0, 0, 0);
       scene.add(bldg);
     } else {
       _creerBatimentProc(scene, poly.surface || 120);
@@ -6293,7 +6322,7 @@ async function _genererScene3D(poly) {
     const routeProche = await _verifierProximitéRoute(poly.center[1], poly.center[0]);
     if (routeProche) {
       const roadLoaded = await _chargerGLTFSafe(ASSETS_3D.road);
-      const rx = (poly.bbox?.width || 8) / 2 + 5;
+      const rx = bboxW / 2 + 5;
       if (roadLoaded) {
         const r1 = roadLoaded.scene; _normaliserModele(r1, 9);
         r1.position.set(rx, 0, 0); r1.rotation.y = Math.PI/2; scene.add(r1);
@@ -6305,9 +6334,9 @@ async function _genererScene3D(poly) {
     renderer.render(scene, camera);
     _setProgress(progress, 84);
 
-    // ── Arbres (optionnel) ──
+    // ── Arbres ──
     const treeLoaded = await _chargerGLTFSafe(ASSETS_3D.tree);
-    const hw = (poly.bbox?.width || 8) / 2;
+    const hw = bboxW / 2;
     [[-hw - 2, 0, -3], [hw + 1, 0, -5]].forEach(pos => {
       if (treeLoaded) {
         const t = treeLoaded.scene.clone(); _normaliserModele(t, 3);
@@ -6326,13 +6355,19 @@ async function _genererScene3D(poly) {
     // ── Interaction touch/mouse ──
     _initInteraction3D(canvas, camera);
 
-    // ── Boucle d'animation ──
+    // ── Boucle d'animation (orbite UNIQUEMENT si l'utilisateur ne touche pas) ──
     let tick = 0;
+    let autoOrbit = false; // pas d'orbite au démarrage — se lance après 3s d'inactivité
+    let inactivityTimer = setTimeout(() => { autoOrbit = true; }, 3000);
+
+    canvas.addEventListener('touchstart', () => { autoOrbit = false; clearTimeout(inactivityTimer); }, { passive: true });
+    canvas.addEventListener('mousedown',  () => { autoOrbit = false; clearTimeout(inactivityTimer); });
+
     function animate() {
       _scene3dAnimId = requestAnimationFrame(animate);
       tick += 0.012;
       lampLight.intensity = 3.6 + Math.sin(tick * 2.3) * 0.5;
-      if (!_scene3dInteract.isDragging) {
+      if (autoOrbit && !_scene3dInteract.isDragging) {
         camera.position.x = Math.sin(tick * 0.15) * 22;
         camera.position.z = Math.cos(tick * 0.15) * 22;
         camera.position.y = 10 + Math.sin(tick * 0.08) * 2;
@@ -6567,14 +6602,22 @@ function fermerScene3D() {
   _scene3dCamera  = null;
   _scene3dActive  = false;
 
-  // Vider le canvas
+  // Vider le canvas (effacer le rendu WebGL)
   const canvas  = document.getElementById('scene3d-canvas');
   const overlay = document.getElementById('scene3d-overlay');
-  if (canvas) { const ctx = canvas.getContext('2d'); if(ctx) ctx.clearRect(0,0,canvas.width,canvas.height); }
+  if (canvas) {
+    canvas.removeAttribute('width');
+    canvas.removeAttribute('height');
+    canvas.style.width  = '';
+    canvas.style.height = '';
+  }
+  // Masquer l'overlay via visibility (display reste block pour que le canvas existe)
   if (overlay) { overlay.style.pointerEvents = 'none'; overlay.classList.remove('active'); }
 
   const badge = document.getElementById('scene3d-badge');
-  if (badge) { badge.classList.remove('visible'); badge.innerHTML = '🏗️ Vue 3D active'; }
+  const loading = document.getElementById('scene3d-loading');
+  if (badge)   { badge.classList.remove('visible'); badge.innerHTML = '🏗️ Vue 3D active'; }
+  if (loading) { loading.classList.remove('visible'); }
 
   toast('Vue 3D fermée','');
 }
