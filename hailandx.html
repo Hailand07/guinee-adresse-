@@ -1648,18 +1648,18 @@ body {
 
 /* Panel de sélection polygone */
 .polygon-select-panel {
-  position: absolute;
-  bottom: 80px;
+  position: fixed;
+  bottom: 90px;
   left: 50%;
   transform: translateX(-50%);
   width: calc(100% - 32px);
   max-width: 420px;
-  background: var(--surface);
-  border: 1.5px solid var(--brand);
-  border-radius: var(--radius);
-  padding: 16px 18px 14px;
-  box-shadow: 0 8px 32px rgba(0,0,0,.45), 0 0 0 1px var(--border);
-  z-index: 200;
+  background: var(--surface, #161B25);
+  border: 2px solid var(--brand, #00C851);
+  border-radius: var(--radius, 20px);
+  padding: 18px 20px 16px;
+  box-shadow: 0 12px 48px rgba(0,0,0,.7), 0 0 0 1px rgba(0,200,81,.2);
+  z-index: 9999;
   animation: slideUp .28s cubic-bezier(.4,0,.2,1);
 }
 .polygon-select-panel.hidden { display: none !important; }
@@ -1702,17 +1702,17 @@ body {
 
 /* Barre de progression chargement 3D */
 .scene3d-loading {
-  position: absolute;
+  position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%,-50%);
-  background: rgba(13,15,20,.92);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: rgba(13,15,20,.96);
+  border: 1px solid var(--border, #2A3348);
+  border-radius: var(--radius, 20px);
   padding: 22px 28px;
   text-align: center;
-  z-index: 300;
-  min-width: 220px;
+  z-index: 9998;
+  min-width: 240px;
   display: none;
 }
 .scene3d-loading.visible { display: block; }
@@ -1737,18 +1737,18 @@ body {
   transition: width .3s ease;
 }
 .scene3d-info-badge {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: rgba(13,15,20,.85);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
+  position: fixed;
+  top: 80px;
+  right: 14px;
+  background: rgba(13,15,20,.92);
+  border: 1px solid var(--border, #2A3348);
+  border-radius: var(--radius-sm, 12px);
+  padding: 6px 12px;
   font-size: .72rem;
-  color: var(--brand);
+  color: var(--brand, #00C851);
   font-weight: 700;
-  pointer-events: none;
-  z-index: 250;
+  pointer-events: auto;
+  z-index: 9997;
   display: none;
 }
 .scene3d-info-badge.visible { display: block; }
@@ -5917,10 +5917,13 @@ function _bboxPolygone(coords) {
 }
 
 /* ─── Activer le mode "clic sur polygone" sur la carte ─── */
-function _activerClicPolygone() {
-  if (!hxMap) return;
+let _clicPolygoneActif = false; // guard anti-double-déclenchement
 
-  // Curseur pointer sur les bâtiments
+function _activerClicPolygone() {
+  if (!hxMap || _clicPolygoneActif) return;
+  _clicPolygoneActif = true;
+
+  // Curseur pointer sur les bâtiments (desktop)
   hxMap.on('mouseenter', 'hailand-buildings-3d', () => {
     hxMap.getCanvas().style.cursor = 'pointer';
   });
@@ -5928,62 +5931,91 @@ function _activerClicPolygone() {
     hxMap.getCanvas().style.cursor = '';
   });
 
-  // Clic sur la couche fill-extrusion (buildings) via queryRenderedFeatures
+  // ── Clic / Tap unifié ──
   hxMap.on('click', async (e) => {
-    // Ignorer si on a une scène 3D active
     if (_scene3dActive) return;
 
-    // Vérifier s'il y a un feature bâtiment à ce point
-    const features = hxMap.queryRenderedFeatures(e.point, {
-      layers: ['hailand-buildings-3d']
+    // queryRenderedFeatures sur plusieurs layers pour maximiser les chances de hit
+    const layersToCheck = ['hailand-buildings-3d', 'building-shadow', 'hailand-buildings-roof'];
+    const existingLayers = layersToCheck.filter(id => {
+      try { return !!hxMap.getLayer(id); } catch(x) { return false; }
     });
 
+    let features = [];
+    if (existingLayers.length > 0) {
+      // Élargir le rayon de détection (utile sur mobile)
+      const bbox = [
+        [e.point.x - 10, e.point.y - 10],
+        [e.point.x + 10, e.point.y + 10]
+      ];
+      features = hxMap.queryRenderedFeatures(bbox, { layers: existingLayers });
+    }
+
     if (features.length === 0) {
-      // Clic sur la carte vide → annuler sélection si existante
-      annulerSelectionPolygone();
+      // Rien de cliqué → on essaie via Overpass au point exact
+      // mais seulement si un polygone est déjà sélectionné (évite requêtes intempestives)
+      if (_selectedPolygon) {
+        annulerSelectionPolygone();
+      }
+      // Tentative Overpass en background (silencieuse)
+      _chargerPolygoneOverpass(e.lngLat.lat, e.lngLat.lng);
       return;
     }
 
     const feat = features[0];
-    // Récupérer la géométrie du feature
+    let coords = null;
     const geom = feat.geometry;
-    if (!geom || geom.type !== 'Polygon') {
-      // Essayer de récupérer via Overpass au point cliqué
-      await _chargerPolygoneOverpass(e.lngLat.lat, e.lngLat.lng);
-      return;
+
+    if (geom && geom.type === 'Polygon' && geom.coordinates && geom.coordinates[0]) {
+      coords = geom.coordinates[0]; // [[lon,lat],...]
+    } else if (geom && geom.type === 'MultiPolygon' && geom.coordinates) {
+      // Prendre le plus grand anneau
+      coords = geom.coordinates.reduce((best, ring) =>
+        ring[0].length > (best ? best.length : 0) ? ring[0] : best, null);
     }
 
-    const coords = geom.coordinates[0]; // [[lon,lat],...]
-    const surface = calculerSurface(coords.map(c => [c[1], c[0]]));
-    const center  = _centrePolygone(coords);
-    const bbox    = _bboxPolygone(coords);
-
-    _selectionnerPolygone(coords, surface, feat.id || 'map_' + Date.now(), center, bbox);
-  });
-
-  // Sur mobile : touch → clic
-  hxMap.on('touchend', async (e) => {
-    if (_scene3dActive || e.originalEvent.touches.length > 1) return;
-    // Le clic est déjà géré par l'event 'click' via touch
+    if (coords && coords.length >= 3) {
+      const surface = calculerSurface(coords.map(c => [c[1], c[0]]));
+      const center  = _centrePolygone(coords);
+      const bbox    = _bboxPolygone(coords);
+      _selectionnerPolygone(coords, surface, feat.id || 'poly_' + Date.now(), center, bbox);
+    } else {
+      // Géométrie absente dans les tuiles → fallback Overpass
+      await _chargerPolygoneOverpass(e.lngLat.lat, e.lngLat.lng);
+    }
   });
 }
 
 /* ─── Charger via Overpass si la géométrie n'est pas dans les tuiles ─── */
 async function _chargerPolygoneOverpass(lat, lon) {
+  // Afficher immédiatement un panel avec zone estimée (fallback rapide)
+  const dEst = 0.00012; // ~13m de côté
+  const coordsEst = [
+    [lon - dEst, lat + dEst], [lon + dEst, lat + dEst],
+    [lon + dEst, lat - dEst], [lon - dEst, lat - dEst],
+    [lon - dEst, lat + dEst]
+  ];
+  const surfEst = Math.round(dEst * 2 * 111319 * dEst * 2 * 111319);
+  const centerEst = [lon, lat];
+  const bboxEst = _bboxPolygone(coordsEst);
+  _selectionnerPolygone(coordsEst, surfEst, 'est_' + Date.now(), centerEst, bboxEst);
+
+  // Requête Overpass en arrière-plan pour affiner
   try {
-    const query = `[out:json];way["building"](around:15,${lat},${lon});out geom;`;
+    const query = `[out:json];way["building"](around:20,${lat},${lon});out geom;`;
     const url   = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
-    const r     = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    const r     = await fetch(url, { signal: AbortSignal.timeout(7000) });
     const data  = await r.json();
     if (data.elements && data.elements.length > 0) {
       const bat    = data.elements[0];
-      const coords = bat.geometry.map(p => [p.lon, p.lat]); // [lon,lat]
+      const coords = bat.geometry.map(p => [p.lon, p.lat]);
       const surface= calculerSurface(coords.map(c => [c[1], c[0]]));
       const center = _centrePolygone(coords);
       const bbox   = _bboxPolygone(coords);
+      // Mettre à jour le panel avec les vraies données
       _selectionnerPolygone(coords, surface, bat.id, center, bbox);
     }
-  } catch(e) { /* silencieux si Overpass lent */ }
+  } catch(e) { /* garder l'estimation si Overpass échoue */ }
 }
 
 /* ─── Sélectionner un polygone et afficher le panel ─── */
@@ -6018,12 +6050,13 @@ function _selectionnerPolygone(coords, surface, buildingId, center, bbox) {
     }
   } catch(e) { console.warn('Selection polygon:', e); }
 
-  // Zoomer sur le polygone sélectionné
-  const lons = coords.map(c=>c[0]), lats = coords.map(c=>c[1]);
-  hxMap.fitBounds([
-    [Math.min(...lons), Math.min(...lats)],
-    [Math.max(...lons), Math.max(...lats)]
-  ], { padding: 80, duration: 600 });
+  // Centrer la vue sur le polygone (sans masquer le panel)
+  hxMap.flyTo({
+    center: center,
+    zoom: Math.min(hxMap.getZoom() + 0.5, 18),
+    duration: 500,
+    essential: true
+  });
 
   // Afficher le panel
   const panel = document.getElementById('polygon-select-panel');
