@@ -4474,7 +4474,6 @@ async function chargerPaiements() {
       <span style="font-size:.8rem;font-weight:700;color:${t.statut==='succes'?'var(--brand)':'#F59E0B'}">${t.statut==='succes'?'✅ Reçu':'⏳ Attente'}</span>
     </div>`).join('');
 }
-
 // ════════════════════════════════════════════════════
 // 16-B. BOUTIQUIER – VENTE RAPIDE (Plan C) & DASHBOARD
 // ════════════════════════════════════════════════════
@@ -6065,4 +6064,473 @@ function _creerBatimentProcédural(group, targetSize, surface, mScale) {
 
   const geo = new THREE.BoxGeometry(w, h, d);
   const mat = new THREE.MeshStandardMaterial({
-    color: 0x2a3a5e, roughness: 0.7, meta
+    color: 0x2a3a5e, roughness: 0.7, metalness: 0.1
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.y = h / 2;
+  group.add(mesh);
+
+  // Toit
+  const roofGeo = new THREE.BoxGeometry(w + 0.02 * mScale, 0.015 * mScale, d + 0.02 * mScale);
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x1e2c45, roughness: 0.9 });
+  const roof = new THREE.Mesh(roofGeo, roofMat);
+  roof.position.y = h + 0.0075 * mScale;
+  group.add(roof);
+}
+
+/* ═══════════════════════════════════════════════════
+   ENREGISTRER ET AFFICHER UN NOUVEAU BÂTIMENT 3D
+   Appelé après confirmation du polygone
+═══════════════════════════════════════════════════ */
+async function _implanter3DSurCarte(poly) {
+  // Choisir le modèle une seule fois
+  const modelUrl = poly._modelUrl || _choisirModele3D(poly.surface || 100);
+  poly._modelUrl = modelUrl;
+
+  const entry = {
+    lon:      poly.center[0],
+    lat:      poly.center[1],
+    surface:  poly.surface || 100,
+    bbox:     poly.bbox,
+    modelUrl: modelUrl,
+    mesh:     null,
+    group:    null,
+  };
+
+  _hx3dRegistry.push(entry);
+
+  // S'assurer que le CustomLayer existe (crée si nécessaire)
+  _creerOuMettreAJourCustomLayer();
+
+  // Si le layer est déjà initialisé (onAdd déjà appelé), charger maintenant
+  if (_hx3dScene) {
+    await _chargerEtPlacerModele(entry);
+  }
+  // Sinon onAdd le fera automatiquement en itérant _hx3dRegistry
+
+  // Recentrer la carte sur le nouveau bâtiment avec un beau pitch
+  hxMap.flyTo({
+    center:   [entry.lon, entry.lat],
+    zoom:     17.5,
+    pitch:    60,
+    bearing:  -20,
+    duration: 1800,
+    essential: true,
+  });
+
+  // Masquer l'extrusion plate du bâtiment OSM sous-jacent
+  // (optionnel — on cache via filter pour ne pas polluer visuellement)
+  _masquerExtrusionSousjacente(poly.buildingId);
+
+  toast('🏗️ Bâtiment 3D implanté sur HailandMap !', 'success');
+  if (navigator.vibrate) navigator.vibrate([60, 30, 60]);
+}
+
+/* ── Masquer l'extrusion fill-extrusion du bâtiment OSM sous-jacent ── */
+// (évite le doublon visuel entre l'extrusion flat et le GLB)
+let _masquésBuildingIds = [];
+function _masquerExtrusionSousjacente(buildingId) {
+  if (!buildingId || String(buildingId).startsWith('est_') || String(buildingId).startsWith('fallback_')) return;
+  _masquésBuildingIds.push(String(buildingId));
+  ['building-shadow','hailand-buildings-3d','hailand-buildings-roof'].forEach(layerId => {
+    try {
+      if (!hxMap.getLayer(layerId)) return;
+      hxMap.setFilter(layerId, [
+        'all',
+        ['!=', ['get', 'hide_3d'], true],
+        ['!', ['in', ['to-string', ['id']], ['literal', _masquésBuildingIds]]]
+      ]);
+    } catch(e) { /* filter non critique */ }
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   CHARGER TOUTES LES SCÈNES EXISTANTES DEPUIS SUPABASE
+   Appelé au démarrage de la carte
+═══════════════════════════════════════════════════ */
+async function _chargerScenes3DExistantes() {
+  if (!hxMap) return;
+  try {
+    const { data, error } = await _sb
+      .from('hailand_scenes')
+      .select('center_lon, center_lat, surface_m2, model_url, building_id, coords_geojson')
+      .not('center_lon', 'is', null)
+      .not('center_lat', 'is', null)
+      .not('model_url', 'is', null);
+
+    if (error) { console.warn('[HxMap3D] Erreur chargement scènes:', error); return; }
+    if (!data || data.length === 0) return;
+
+    console.log(`[HxMap3D] ${data.length} scène(s) à implanters sur la carte`);
+
+    for (const row of data) {
+      // Reconstituer bbox depuis coords_geojson si disponible
+      let bbox = null;
+      if (row.coords_geojson) {
+        try {
+          const coords = JSON.parse(row.coords_geojson);
+          bbox = _bboxPolygone(coords);
+        } catch(e) {}
+      }
+
+      const entry = {
+        lon:      row.center_lon,
+        lat:      row.center_lat,
+        surface:  row.surface_m2 || 100,
+        bbox:     bbox || { width: Math.sqrt(row.surface_m2 || 100), depth: Math.sqrt(row.surface_m2 || 100) },
+        modelUrl: row.model_url,
+        buildingId: row.building_id,
+        mesh:     null,
+        group:    null,
+      };
+      _hx3dRegistry.push(entry);
+    }
+
+    // Créer le CustomLayer (les modèles seront chargés dans onAdd)
+    _creerOuMettreAJourCustomLayer();
+
+    // Si onAdd est déjà passé, charger directement
+    if (_hx3dScene) {
+      for (const entry of _hx3dRegistry) {
+        if (!entry.mesh) await _chargerEtPlacerModele(entry);
+      }
+    }
+
+  } catch(e) {
+    console.error('[HxMap3D] Exception chargerScenes3DExistantes:', e);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   ENREGISTRER LA SCÈNE DANS SUPABASE
+═══════════════════════════════════════════════════ */
+async function _enregistrerScene3D(poly) {
+  try {
+    const userPhone = sess('hx_phone');
+    if (!userPhone) { console.warn('[HxMap3D] Pas de session – enregistrement ignoré'); return; }
+
+    const modelUrl = poly._modelUrl || _choisirModele3D(poly.surface || 100);
+    poly._modelUrl = modelUrl;
+
+    // Sérialiser les coordonnées GeoJSON pour recalculer la bbox au rechargement
+    const coordsJson = JSON.stringify(poly.coords || []);
+
+    const sceneData = {
+      user_phone    : userPhone,
+      building_id   : String(poly.buildingId || ''),
+      center_lon    : poly.center[0],
+      center_lat    : poly.center[1],
+      surface_m2    : Math.round(poly.surface || 0),
+      model_url     : modelUrl,
+      coords_geojson: coordsJson,
+      has_streetlight: true,
+      has_ground    : true,
+      has_road      : true,
+      updated_at    : new Date().toISOString(),
+    };
+
+    const { error } = await _sb
+      .from('hailand_scenes')
+      .upsert(sceneData, { onConflict: 'user_phone' });
+
+    if (error) {
+      console.error('[HxMap3D] Erreur Supabase hailand_scenes:', error);
+      toast('⚠️ Sauvegarde 3D échouée : ' + error.message, 'warn');
+    } else {
+      console.log('[HxMap3D] Scène enregistrée ✓');
+    }
+  } catch(e) {
+    console.error('[HxMap3D] Exception _enregistrerScene3D:', e);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   ÉTAT DE LA SÉLECTION DE POLYGONE
+═══════════════════════════════════════════════════ */
+let _selectedPolygon  = null;
+let _clicPolygoneActif = false;
+
+/* ── Activer le mode clic sur polygone ── */
+function _activerClicPolygone() {
+  if (!hxMap || _clicPolygoneActif) return;
+  _clicPolygoneActif = true;
+
+  hxMap.on('mouseenter', 'hailand-buildings-3d', () => {
+    hxMap.getCanvas().style.cursor = 'pointer';
+  });
+  hxMap.on('mouseleave', 'hailand-buildings-3d', () => {
+    hxMap.getCanvas().style.cursor = '';
+  });
+
+  hxMap.on('click', async (e) => {
+    // Ignorer si un panel est déjà ouvert
+    const panel = document.getElementById('polygon-select-panel');
+    if (panel && !panel.classList.contains('hidden')) return;
+
+    const layersToCheck = ['hailand-buildings-3d', 'building-shadow', 'hailand-buildings-roof'];
+    const existingLayers = layersToCheck.filter(id => {
+      try { return !!hxMap.getLayer(id); } catch(x) { return false; }
+    });
+
+    let features = [];
+    if (existingLayers.length > 0) {
+      const bbox = [
+        [e.point.x - 12, e.point.y - 12],
+        [e.point.x + 12, e.point.y + 12]
+      ];
+      features = hxMap.queryRenderedFeatures(bbox, { layers: existingLayers });
+    }
+
+    const lon = e.lngLat.lng;
+    const lat = e.lngLat.lat;
+
+    if (features.length > 0 && features[0].geometry?.coordinates) {
+      const geom = features[0].geometry;
+      const coords = geom.type === 'Polygon'
+        ? geom.coordinates[0].map(c => [c[0], c[1]])
+        : [[lon - 0.0001, lat - 0.0001],[lon + 0.0001, lat - 0.0001],
+           [lon + 0.0001, lat + 0.0001],[lon - 0.0001, lat + 0.0001]];
+      const surface = calculerSurface(coords.map(c => [c[1], c[0]]));
+      const center  = _centrePolygone(coords);
+      const bbox_   = _bboxPolygone(coords);
+      _selectionnerPolygone(coords, surface, features[0].id || features[0].properties?.id || 'map_' + Date.now(), center, bbox_);
+    } else {
+      // Estimation + Overpass en arrière-plan
+      const dEst = 0.00012;
+      const coordsEst = [
+        [lon - dEst, lat + dEst],[lon + dEst, lat + dEst],
+        [lon + dEst, lat - dEst],[lon - dEst, lat - dEst],
+        [lon - dEst, lat + dEst]
+      ];
+      const surfEst = Math.round(dEst * 2 * 111319 * dEst * 2 * 111319);
+      _selectionnerPolygone(coordsEst, surfEst, 'est_' + Date.now(),
+        [lon, lat], _bboxPolygone(coordsEst));
+
+      // Affiner avec Overpass
+      try {
+        const query = `[out:json];way["building"](around:20,${lat},${lon});out geom;`;
+        const r     = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query),
+          { signal: AbortSignal.timeout(7000) });
+        const data  = await r.json();
+        if (data.elements?.length > 0) {
+          const bat    = data.elements[0];
+          const coords = bat.geometry.map(p => [p.lon, p.lat]);
+          const surface= calculerSurface(coords.map(c => [c[1], c[0]]));
+          const center = _centrePolygone(coords);
+          const bboxC  = _bboxPolygone(coords);
+          _selectionnerPolygone(coords, surface, bat.id, center, bboxC);
+        }
+      } catch(err) { /* garder l'estimation */ }
+    }
+  });
+}
+
+/* ── Sélectionner un polygone et afficher le panel de confirmation ── */
+function _selectionnerPolygone(coords, surface, buildingId, center, bbox) {
+  _effacerSelectionVisuelle();
+  _selectedPolygon = { coords, surface, buildingId, center, bbox };
+
+  // Surligner le polygone sur la carte
+  const sourceId = 'hx-selected-polygon';
+  const geojsonCoords = [...coords];
+  if (geojsonCoords[0][0] !== geojsonCoords[geojsonCoords.length-1][0])
+    geojsonCoords.push(geojsonCoords[0]);
+
+  try {
+    if (hxMap.getSource(sourceId)) {
+      hxMap.getSource(sourceId).setData({
+        type:'Feature', geometry:{ type:'Polygon', coordinates:[geojsonCoords] }
+      });
+    } else {
+      hxMap.addSource(sourceId, { type:'geojson', data:{
+        type:'Feature', geometry:{ type:'Polygon', coordinates:[geojsonCoords] }
+      }});
+      hxMap.addLayer({ id:'hx-sel-fill', type:'fill', source:sourceId,
+        paint:{ 'fill-color':'#00C851', 'fill-opacity':0.32 }
+      });
+      hxMap.addLayer({ id:'hx-sel-line', type:'line', source:sourceId,
+        paint:{ 'line-color':'#00C851', 'line-width':3, 'line-dasharray':[4,3] }
+      });
+    }
+  } catch(e) { console.warn('Selection polygon:', e); }
+
+  hxMap.flyTo({ center, zoom: Math.min(hxMap.getZoom() + 0.5, 18), duration: 500, essential: true });
+
+  const panel = document.getElementById('polygon-select-panel');
+  const desc  = document.getElementById('polygon-select-desc');
+  if (desc) desc.innerHTML = `
+    Surface : <strong style="color:var(--brand)">${Math.round(surface)} m²</strong><br>
+    Position : ${center[1].toFixed(5)}°, ${center[0].toFixed(5)}°<br>
+    <em style="font-size:.72rem">Verrouiller et implanter le bâtiment 3D à cet emplacement ?</em>
+  `;
+  if (panel) panel.classList.remove('hidden');
+  if (navigator.vibrate) navigator.vibrate(40);
+}
+
+/* ── Effacer la sélection visuelle ── */
+function _effacerSelectionVisuelle() {
+  ['hx-sel-fill','hx-sel-line'].forEach(id => {
+    try { if(hxMap && hxMap.getLayer(id)) hxMap.removeLayer(id); } catch(e){}
+  });
+  try { if(hxMap && hxMap.getSource('hx-selected-polygon')) hxMap.removeSource('hx-selected-polygon'); } catch(e){}
+}
+
+/* ── Annuler la sélection ── */
+function annulerSelectionPolygone() {
+  _selectedPolygon = null;
+  _effacerSelectionVisuelle();
+  const panel = document.getElementById('polygon-select-panel');
+  if (panel) panel.classList.add('hidden');
+}
+
+/* ═══════════════════════════════════════════════════
+   CONFIRMER → SAUVEGARDER + IMPLANTER SUR LA CARTE
+═══════════════════════════════════════════════════ */
+async function confirmerVerrouillage3D() {
+  if (!_selectedPolygon) return;
+
+  const panel = document.getElementById('polygon-select-panel');
+  if (panel) panel.classList.add('hidden');
+
+  // Afficher indicateur de chargement
+  const loading  = document.getElementById('scene3d-loading');
+  const progress = document.getElementById('scene3d-progress');
+  if (loading)  loading.classList.add('visible');
+  if (progress) progress.style.width = '20%';
+
+  const { coords, surface, buildingId } = _selectedPolygon;
+
+  // 1. Enregistrer l'adresse dans la table clients
+  await enregistrerAdresseHailandX(
+    coords.map(c => [c[1], c[0]]),  // [lon,lat] → [lat,lon] pour stockage
+    surface,
+    buildingId
+  );
+  if (progress) progress.style.width = '45%';
+
+  // 2. Choisir le modèle et l'enregistrer dans hailand_scenes
+  _selectedPolygon._modelUrl = _choisirModele3D(surface);
+  await _enregistrerScene3D(_selectedPolygon);
+  if (progress) progress.style.width = '70%';
+
+  // 3. Implanter le modèle 3D directement sur la carte
+  await _implanter3DSurCarte(_selectedPolygon);
+  if (progress) progress.style.width = '100%';
+
+  // Masquer le loading après un court délai
+  setTimeout(() => {
+    if (loading)  loading.classList.remove('visible');
+    if (progress) progress.style.width = '0%';
+  }, 800);
+
+  _effacerSelectionVisuelle();
+  _selectedPolygon = null;
+}
+
+/* ── Hook : activer le clic polygone lors de l'init de la carte ── */
+const _origConfigurer = _configurerAmbiance;
+const _origInitMapLibre = _initMapLibre;
+
+function _initMapLibreAvec3D() {
+  return _origInitMapLibre();
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// SQL – Tables Supabase (à exécuter une fois dans le dashboard)
+// ════════════════════════════════════════════════════════════════
+/*
+CREATE TABLE IF NOT EXISTS hailand_scenes (
+  id              BIGSERIAL PRIMARY KEY,
+  user_phone      TEXT NOT NULL,
+  building_id     TEXT,
+  center_lon      DOUBLE PRECISION,
+  center_lat      DOUBLE PRECISION,
+  surface_m2      INTEGER DEFAULT 0,
+  model_url       TEXT,
+  coords_geojson  TEXT,
+  has_streetlight BOOLEAN DEFAULT true,
+  has_ground      BOOLEAN DEFAULT true,
+  has_road        BOOLEAN DEFAULT false,
+  created_at      TIMESTAMPTZ DEFAULT now(),
+  updated_at      TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_phone)
+);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_zone TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_surface INTEGER DEFAULT 0;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_building_id TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_address_update TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_hailand_scenes_phone ON hailand_scenes(user_phone);
+CREATE INDEX IF NOT EXISTS idx_hailand_scenes_location ON hailand_scenes(center_lat, center_lon);
+ALTER TABLE hailand_scenes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_access" ON hailand_scenes FOR ALL USING (true);
+*/
+
+
+
+// ════════════════════════════════════════════════════════════════
+// SQL – Tables Supabase pour les scènes 3D (à exécuter une fois)
+// ════════════════════════════════════════════════════════════════
+/*
+-- Table des scènes 3D verrouillées
+CREATE TABLE IF NOT EXISTS hailand_scenes (
+  id              BIGSERIAL PRIMARY KEY,
+  user_phone      TEXT NOT NULL,
+  building_id     TEXT,
+  center_lon      DOUBLE PRECISION,
+  center_lat      DOUBLE PRECISION,
+  surface_m2      INTEGER DEFAULT 0,
+  model_url       TEXT,
+  has_streetlight BOOLEAN DEFAULT true,
+  has_ground      BOOLEAN DEFAULT true,
+  has_road        BOOLEAN DEFAULT false,
+  created_at      TIMESTAMPTZ DEFAULT now(),
+  updated_at      TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_phone)
+);
+
+-- Colonnes optionnelles sur clients (si pas déjà présentes)
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_zone TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_surface INTEGER DEFAULT 0;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS hailand_building_id TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_address_update TIMESTAMPTZ;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS scene_3d_model_url TEXT;
+
+-- Index pour accès rapide par user_phone
+CREATE INDEX IF NOT EXISTS idx_hailand_scenes_phone ON hailand_scenes(user_phone);
+CREATE INDEX IF NOT EXISTS idx_hailand_scenes_location ON hailand_scenes(center_lat, center_lon);
+
+-- RLS (Row Level Security) - chaque utilisateur voit seulement sa scène
+ALTER TABLE hailand_scenes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "Users see own scene"
+  ON hailand_scenes FOR ALL
+  USING (true);  -- adapter selon votre auth Supabase
+*/
+
+
+// ════════════════════════════════════════════════════
+// PULL TO REFRESH
+// ════════════════════════════════════════════════════
+(function initPullToRefresh() {
+  let startY = 0, pulling = false;
+  window.addEventListener('touchstart', e => { startY = e.touches[0].pageY; }, { passive:true });
+  window.addEventListener('touchend', async () => {
+    if(pulling) {
+      pulling = false;
+      const role = sess('hx_role');
+      if     (role==='client')      await afficherClient();
+      else if(role==='livreur')     await chercherMissions();
+      else if(role==='boutiquier')  await afficherStock('Boutiquier');
+      else if(role==='grossiste')   await afficherInterfaceGrossiste();
+      else if(role==='importateur') await afficherInterfaceImportateur();
+    }
+  }, { passive:true });
+  window.addEventListener('touchmove', e => {
+    if(window.scrollY===0 && e.touches[0].pageY - startY > 80) pulling = true;
+  }, { passive:true });
+})();
+
+</script>
+
+</body>
+</html>
