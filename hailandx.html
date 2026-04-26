@@ -23,28 +23,11 @@
 <link href="https://unpkg.com/maplibre-gl@4.1.0/dist/maplibre-gl.css" rel="stylesheet"/>
 <script src="https://unpkg.com/maplibre-gl@4.1.0/dist/maplibre-gl.js"></script>
 
-<!-- Three.js r134 build UMD (expose window.THREE) -->
+<!-- Three.js + GLTFLoader pour les modèles 3D GLB/GLTF -->
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-<!-- GLTFLoader compatible r134, exposé sur window.THREE.GLTFLoader -->
-
-<script>
-(function() {
-  // Charge le GLTFLoader et l'attache à window.THREE dès que Three.js est prêt
-  var s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/GLTFLoader.js';
-  s.onload = function() {
-    console.log('[HailandMap3D] GLTFLoader prêt :', typeof THREE.GLTFLoader);
-  };
-  s.onerror = function() {
-    console.warn('[HailandMap3D] GLTFLoader CDN échoué – fallback procédural actif');
-    // Créer un stub pour que _chargerGLTF tombe sur le catch proprement
-    if (window.THREE) THREE._gltfLoaderFailed = true;
-  };
-  document.head.appendChild(s);
-})();
-</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 
 <!-- Fonts -->
 
@@ -1650,18 +1633,15 @@ body {
    3D SCENE OVERLAY – Verrouillage de polygone vivant
 ══════════════════════════════════════════════════════ */
 #scene3d-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 8000;
+  z-index: 60;
   pointer-events: none;
   background: transparent;
-  display: none;
-}
-#scene3d-overlay.active {
-  display: block;
 }
 #scene3d-canvas {
-  /* NE PAS mettre width/height en CSS — WebGL a besoin des attributs HTML */
+  width: 100%;
+  height: 100%;
   display: block;
   pointer-events: none;
 }
@@ -4507,56 +4487,6 @@ async function chargerPaiements() {
       <span style="font-size:.8rem;font-weight:700;color:${t.statut==='succes'?'var(--brand)':'#F59E0B'}">${t.statut==='succes'?'✅ Reçu':'⏳ Attente'}</span>
     </div>`).join('');
 }
-// ════════════════════════════════════════════════════
-// 16-B. BOUTIQUIER – VENTE RAPIDE (Plan C) & DASHBOARD
-// ════════════════════════════════════════════════════
-let panierActuel = [];
-let tousLesProduits = [];
-
-/* ─── Dashboard KPI ─── */
-async function actualiserDashboard() {
-  const monTel = sess('hx_phone');
-
-  const { data: produits } = await _sb.from('produits').select('*').eq('vendeur_contact', monTel);
-  const nbProduits = produits?.length || 0;
-
-  const { data: ventes } = await _sb.from('ventes').select('benefice').eq('vendeur_id', monTel);
-  const totalBenef = (ventes || []).reduce((s, v) => s + (v.benefice || 0), 0);
-
-  const { count: nbCommandes } = await _sb.from('missions')
-    .select('id', { count:'exact', head:true })
-    .eq('vendeur_id', monTel).eq('statut', 'en_attente');
-
-  const elProduits  = document.getElementById('kpi-total-produits');
-  const elBenef     = document.getElementById('kpi-benefices');
-  const elCommandes = document.getElementById('kpi-alertes');
-  if(elProduits)  elProduits.textContent  = nbProduits;
-  if(elBenef)     elBenef.textContent     = Number(totalBenef).toLocaleString('fr-FR') + ' GNF';
-  if(elCommandes) elCommandes.textContent = nbCommandes || 0;
-}
-
-/* ─── Historique ventes récentes ─── */
-async function chargerHistoriqueVentes() {
-  const monTel = sess('hx_phone');
-  const cont   = document.getElementById('historique-ventes');
-  if(!cont) return;
-  const { data, error } = await _sb.from('ventes')
-    .select('*').eq('vendeur_id', monTel)
-    .order('created_at', { ascending: false }).limit(8);
-  if(error || !data || data.length === 0) {
-    cont.innerHTML = `<p style="color:var(--muted);font-size:.85rem;text-align:center;padding:14px">📭 Aucune vente enregistrée</p>`;
-    return;
-  }
-  cont.innerHTML = data.map(v => `
-    <div class="vente-row">
-      <div>
-        <div style="font-weight:700;font-size:.88rem">${((v.produits||[]).map(p=>sanitize(p.nom)).join(', '))||'Vente'}</div>
-        <div class="vente-info">${new Date(v.created_at).toLocaleString('fr-FR',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'short'})}</div>
-      </div>
-      <div class="vente-total">${Number(v.total).toLocaleString('fr-FR')} GNF</div>
-    </div>`).join('');
-}
-
 /* ─── Ouvrir / Fermer modals ─── */
 function ouvrirVenteRapide() {
   const modal = document.getElementById('zone-vente-rapide');
@@ -6157,229 +6087,209 @@ async function _enregistrerScene3D(poly) {
 
 /* ─── Générer la scène 3D Three.js par-dessus la carte ─── */
 async function _genererScene3D(poly) {
-  // ── Guard : éviter double lancement ──
-  if (_scene3dActive) { fermerScene3D(); await new Promise(r => setTimeout(r, 200)); }
-
-  const loading  = document.getElementById('scene3d-loading');
+  const loading = document.getElementById('scene3d-loading');
   const progress = document.getElementById('scene3d-progress');
-  const badge    = document.getElementById('scene3d-badge');
-  const overlay  = document.getElementById('scene3d-overlay');
-  const canvas   = document.getElementById('scene3d-canvas');
+  const badge = document.getElementById('scene3d-badge');
+  const overlay = document.getElementById('scene3d-overlay');
+  const canvas  = document.getElementById('scene3d-canvas');
 
-  if (!canvas || !overlay) {
-    toast('❌ Canvas 3D introuvable', 'error');
-    return;
-  }
+  if (!canvas || !overlay) return;
 
-  // Vérifier que Three.js est chargé
-  if (!window.THREE) {
-    toast('❌ Three.js non chargé', 'error');
-    return;
-  }
+  // Afficher le chargement
+  if (loading) loading.classList.add('visible');
+  _setProgress(progress, 5);
 
-  try {
-    // ── Afficher loading ──
-    if (loading) loading.classList.add('visible');
-    _setProgress(progress, 5);
+  // Dimensionner le canvas sur le container de la carte
+  const mapContainer = document.getElementById('hailand-map-container');
+  const w = mapContainer ? mapContainer.clientWidth  : window.innerWidth;
+  const h = mapContainer ? mapContainer.clientHeight : window.innerHeight;
+  canvas.width  = w;
+  canvas.height = h;
+  overlay.style.pointerEvents = 'auto';
 
-    // ── Dimensions : utiliser l'écran entier (fixed overlay) ──
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+  // ── Initialiser Three.js ──
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setClearColor(0x000000, 0); // transparent pour voir la carte en dessous
 
-    // Attributs HTML du canvas (obligatoire pour WebGL)
-    canvas.setAttribute('width',  w);
-    canvas.setAttribute('height', h);
-    canvas.style.width  = w + 'px';
-    canvas.style.height = h + 'px';
+  const scene = new THREE.Scene();
 
-    // Activer l'overlay (le rendre visible)
-    overlay.classList.add('active');
-    overlay.style.pointerEvents = 'auto';
+  // Brume nocturne
+  scene.fog = new THREE.Fog(0x0d0f14, 30, 120);
 
-    // ── Initialiser Three.js WebGLRenderer ──
-    let renderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    } catch(e) {
-      toast('❌ WebGL non supporté sur cet appareil', 'error');
-      if (loading) loading.classList.remove('visible');
-      overlay.classList.remove('active');
-      return;
-    }
-    renderer.setSize(w, h, false); // false = ne pas modifier le CSS
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.shadowMap.enabled = true;
-    renderer.setClearColor(0x0a0c14, 1); // fond sombre opaque
+  // ── Caméra ──
+  const aspect = w / h;
+  const camera = new THREE.PerspectiveCamera(55, aspect, 0.1, 500);
+  // Position initiale : légèrement surélevée, vue oblique
+  camera.position.set(0, 12, 22);
+  camera.lookAt(0, 0, 0);
 
-    const scene  = new THREE.Scene();
-    scene.fog    = new THREE.Fog(0x0a0c14, 25, 90);
-    scene.background = new THREE.Color(0x0a0c14);
+  _scene3dRenderer = renderer;
+  _scene3dScene    = scene;
+  _scene3dCamera   = camera;
+  _scene3dActive   = true;
 
-    const aspect = w / h;
-    const camera = new THREE.PerspectiveCamera(55, aspect, 0.1, 300);
-    camera.position.set(0, 12, 22);
-    camera.lookAt(0, 2, 0);
+  // ── Lumières ──
+  // Ambiance nocturne sombre
+  const ambientLight = new THREE.AmbientLight(0x1a2035, 0.6);
+  scene.add(ambientLight);
 
-    _scene3dRenderer = renderer;
-    _scene3dScene    = scene;
-    _scene3dCamera   = camera;
-    _scene3dActive   = true;
+  // Lune (lumière directionnelle bleutée)
+  const moonLight = new THREE.DirectionalLight(0x4a6fa5, 0.9);
+  moonLight.position.set(-20, 30, 10);
+  moonLight.castShadow = true;
+  moonLight.shadow.mapSize.width  = 1024;
+  moonLight.shadow.mapSize.height = 1024;
+  moonLight.shadow.camera.near = 0.5;
+  moonLight.shadow.camera.far  = 100;
+  scene.add(moonLight);
 
-    // ── Lumières ──
-    scene.add(new THREE.AmbientLight(0x2a3555, 1.2));
+  // Lampadaire : lumière point chaude orangée
+  const lampLight = new THREE.PointLight(0xF5A623, 3.5, 20);
+  lampLight.position.set(-6, 5, 2);
+  lampLight.castShadow = true;
+  scene.add(lampLight);
 
-    const moon = new THREE.DirectionalLight(0x6080bb, 1.8);
-    moon.position.set(-15, 25, 10);
-    moon.castShadow = true;
-    moon.shadow.mapSize.set(512, 512);
-    scene.add(moon);
+  // Lumière de remplissage douce verte (brand)
+  const fillLight = new THREE.PointLight(0x00C851, 0.4, 15);
+  fillLight.position.set(8, 4, -4);
+  scene.add(fillLight);
 
-    const lampLight = new THREE.PointLight(0xF5A623, 4.0, 18);
-    lampLight.position.set(-5, 5, 2);
-    scene.add(lampLight);
+  _setProgress(progress, 20);
 
-    const fillLight2 = new THREE.PointLight(0x00C851, 0.6, 12); fillLight2.position.set(8, 3, -4); scene.add(fillLight2);
+  // ── Sol ──
+  const groundSize = Math.max(poly.bbox.width, poly.bbox.depth, 20) * 1.8;
+  const groundGeo = new THREE.PlaneGeometry(groundSize, groundSize, 1, 1);
+  const groundMat = new THREE.MeshStandardMaterial({
+    color: 0x111622,
+    roughness: 0.95,
+    metalness: 0.05
+  });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.01;
+  ground.receiveShadow = true;
+  scene.add(ground);
 
-    _setProgress(progress, 18);
+  // Texture quadrillage sur le sol (simule du béton)
+  const gridHelper = new THREE.GridHelper(groundSize, Math.ceil(groundSize), 0x1c2535, 0x1a2235);
+  gridHelper.position.y = 0.002;
+  scene.add(gridHelper);
 
-    // ── Sol ──
-    const gSize = Math.max((poly.bbox?.width||10), (poly.bbox?.depth||10), 15) * 2.2;
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(gSize, gSize),
-      new THREE.MeshStandardMaterial({ color: 0x0e1320, roughness: 1.0 })
-    );
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    scene.add(ground);
+  _setProgress(progress, 35);
 
-    // Grille béton
-    const grid = new THREE.GridHelper(gSize, Math.min(Math.ceil(gSize), 30), 0x1e2a40, 0x161f30);
-    grid.position.y = 0.01;
-    scene.add(grid);
+  // ── Lampadaire GLB ──
+  await _chargerGLTF(ASSETS_3D.streetlight).then(gltf => {
+    const lamp = gltf.scene;
+    _normaliserModele(lamp, 5); // hauteur cible 5m
+    lamp.position.set(-5, 0, 1);
+    lamp.castShadow = true;
+    scene.add(lamp);
+  }).catch(()=>{
+    // Fallback lampadaire procédural si GLB échoue
+    _creerLampadaireProc(scene, -5, 0, 1);
+  });
 
-    // Rendu immédiat dès le sol pour montrer que ça marche
-    renderer.render(scene, camera);
-    _setProgress(progress, 30);
+  _setProgress(progress, 50);
 
-    // ── Lampadaire (GLB ou procédural) ──
-    const lampLoaded = await _chargerGLTFSafe(ASSETS_3D.streetlight);
-    if (lampLoaded) {
-      _normaliserModele(lampLoaded.scene, 5);
-      lampLoaded.scene.position.set(-5, 0, 1);
-      scene.add(lampLoaded.scene);
-    } else {
-      _creerLampadaireProc(scene, -5, 0, 1);
-    }
-    renderer.render(scene, camera);
-    _setProgress(progress, 48);
-
-    // ── Bâtiment principal (GLB ou procédural) ──
-    const modelUrl  = _choisirModele3D(poly.surface || 100);
-    const bldgLoaded = await _chargerGLTFSafe(modelUrl);
-    if (bldgLoaded) {
-      const bldg = bldgLoaded.scene;
-      const cible = Math.min(Math.max((poly.bbox?.width||8) * 0.75, 5), 16);
-      _normaliserModele(bldg, cible);
-      bldg.castShadow = bldg.receiveShadow = true;
-      scene.add(bldg);
-    } else {
-      _creerBatimentProc(scene, poly.surface || 120);
-    }
-    renderer.render(scene, camera);
-    _setProgress(progress, 68);
-
-    // ── Route adjacente ──
-    const routeProche = await _verifierProximitéRoute(poly.center[1], poly.center[0]);
-    if (routeProche) {
-      const roadLoaded = await _chargerGLTFSafe(ASSETS_3D.road);
-      const rx = (poly.bbox?.width || 8) / 2 + 5;
-      if (roadLoaded) {
-        const r1 = roadLoaded.scene; _normaliserModele(r1, 9);
-        r1.position.set(rx, 0, 0); r1.rotation.y = Math.PI/2; scene.add(r1);
-        const r2 = r1.clone(); r2.position.set(rx, 0, 9); scene.add(r2);
-      } else {
-        _creerRouteProc(scene, rx);
-      }
-    }
-    renderer.render(scene, camera);
-    _setProgress(progress, 84);
-
-    // ── Arbres (optionnel) ──
-    const treeLoaded = await _chargerGLTFSafe(ASSETS_3D.tree);
-    const hw = (poly.bbox?.width || 8) / 2;
-    [[-hw - 2, 0, -3], [hw + 1, 0, -5]].forEach(pos => {
-      if (treeLoaded) {
-        const t = treeLoaded.scene.clone(); _normaliserModele(t, 3);
-        t.position.set(...pos); scene.add(t);
+  // ── Bâtiment principal GLB ──
+  const modelUrl = _choisirModele3D(poly.surface);
+  await _chargerGLTF(modelUrl).then(gltf => {
+    const bldg = gltf.scene;
+    // Adapter l'échelle au polygone
+    const cibleLarg = Math.min(Math.max(poly.bbox.width, 5), 18);
+    _normaliserModele(bldg, cibleLarg * 0.7);
+    bldg.position.set(0, 0, 0);
+    bldg.castShadow = true;
+    bldg.receiveShadow = true;
+    // Correction teinte nocturne légère
+    bldg.traverse(child => {
+      if (child.isMesh && child.material) {
+        child.material = child.material.clone();
+        child.material.envMapIntensity = 0.3;
       }
     });
+    scene.add(bldg);
+  }).catch(() => {
+    // Fallback bâtiment procédural
+    _creerBatimentProc(scene, poly.surface);
+  });
 
-    _setProgress(progress, 100);
-    renderer.render(scene, camera);
+  _setProgress(progress, 70);
 
-    // ── Cacher loading + montrer badge ──
-    await new Promise(r => setTimeout(r, 400));
+  // ── Route adjacente GLB (seulement si polygone proche d'une route) ──
+  const routeProximate = await _verifierProximitéRoute(poly.center[1], poly.center[0]);
+  if (routeProximate) {
+    await _chargerGLTF(ASSETS_3D.road).then(gltf => {
+      const road = gltf.scene;
+      _normaliserModele(road, 8);
+      road.position.set(poly.bbox.width / 2 + 4, 0, 0);
+      road.rotation.y = Math.PI / 2; // orienter parallèle au bâtiment
+      scene.add(road);
+
+      // 2e tronçon de route pour plus de réalisme
+      const road2 = road.clone();
+      road2.position.set(poly.bbox.width / 2 + 4, 0, 8);
+      scene.add(road2);
+    }).catch(() => {
+      // Fallback route procédurale
+      _creerRouteProc(scene, poly.bbox.width / 2 + 4);
+    });
+  }
+
+  _setProgress(progress, 88);
+
+  // ── Petits détails : plantes/arbres autour ──
+  await _chargerGLTF(ASSETS_3D.tree).then(gltf => {
+    const positions = [[-poly.bbox.width/2-2, 0, -3], [poly.bbox.width/2+1, 0, -5]];
+    positions.forEach(pos => {
+      const tree = gltf.scene.clone();
+      _normaliserModele(tree, 3);
+      tree.position.set(...pos);
+      scene.add(tree);
+    });
+  }).catch(()=>{}); // arbre optionnel
+
+  _setProgress(progress, 100);
+
+  // ── Cacher loading, montrer badge ──
+  setTimeout(() => {
     if (loading) loading.classList.remove('visible');
     if (badge) badge.classList.add('visible');
+  }, 300);
 
-    // ── Interaction touch/mouse ──
-    _initInteraction3D(canvas, camera);
+  // ── Interaction tactile / souris (rotation/zoom de la scène) ──
+  _initInteraction3D(canvas, camera);
 
-    // ── Boucle d'animation ──
-    let tick = 0;
-    function animate() {
-      _scene3dAnimId = requestAnimationFrame(animate);
-      tick += 0.012;
-      lampLight.intensity = 3.6 + Math.sin(tick * 2.3) * 0.5;
-      if (!_scene3dInteract.isDragging) {
-        camera.position.x = Math.sin(tick * 0.15) * 22;
-        camera.position.z = Math.cos(tick * 0.15) * 22;
-        camera.position.y = 10 + Math.sin(tick * 0.08) * 2;
-        camera.lookAt(0, 3, 0);
-      }
-      renderer.render(scene, camera);
+  // ── Boucle de rendu animée ──
+  let tick = 0;
+  function animate() {
+    _scene3dAnimId = requestAnimationFrame(animate);
+    tick += 0.012;
+
+    // Légère oscillation du lampadaire
+    lampLight.intensity = 3.2 + Math.sin(tick * 2.1) * 0.4;
+
+    // Rotation lente auto si pas d'interaction
+    if (!_scene3dInteract.isDragging) {
+      camera.position.x = Math.sin(tick * 0.18) * 22;
+      camera.position.z = Math.cos(tick * 0.18) * 22;
+      camera.position.y = 10 + Math.sin(tick * 0.09) * 3;
+      camera.lookAt(0, 3, 0);
     }
-    animate();
 
-    _ajouterBoutonFermer3D();
-    toast('🏗️ Scène 3D générée !', 'success');
-    if (navigator.vibrate) navigator.vibrate([60, 30, 60]);
-
-  } catch(err) {
-    console.error('[Scene3D] Erreur fatale :', err);
-    toast('⚠️ Scène 3D : ' + (err.message || 'erreur'), 'error');
-    if (loading) loading.classList.remove('visible');
-    overlay.classList.remove('active');
-    _scene3dActive = false;
+    renderer.render(scene, camera);
   }
-}
+  animate();
 
-/* ─── Charger GLTF avec timeout et gestion d'erreur propre ─── */
-async function _chargerGLTFSafe(url, timeoutMs = 8000) {
-  if (!window.THREE) return null;
-  if (!THREE.GLTFLoader || THREE._gltfLoaderFailed) {
-    console.warn('[Scene3D] GLTFLoader absent → fallback procédural');
-    return null;
-  }
-  return new Promise(resolve => {
-    const timer = setTimeout(() => {
-      console.warn('[Scene3D] Timeout GLB:', url);
-      resolve(null);
-    }, timeoutMs);
-    try {
-      const loader = new THREE.GLTFLoader();
-      loader.load(
-        url,
-        gltf => { clearTimeout(timer); resolve(gltf); },
-        undefined,
-        err  => { clearTimeout(timer); console.warn('[Scene3D] Erreur GLB:', url, err); resolve(null); }
-      );
-    } catch(e) {
-      clearTimeout(timer);
-      console.warn('[Scene3D] GLTFLoader exception:', e);
-      resolve(null);
-    }
-  });
+  // ── Bouton fermeture 3D ──
+  _ajouterBoutonFermer3D();
+
+  toast('🏗️ Scène 3D générée avec succès !', 'success');
+  if (navigator.vibrate) navigator.vibrate([60, 30, 60]);
 }
 
 /* ─── Mettre à jour la barre de progression ─── */
@@ -6387,7 +6297,14 @@ function _setProgress(el, pct) {
   if (el) el.style.width = pct + '%';
 }
 
-/* _chargerGLTF remplacé par _chargerGLTFSafe */
+/* ─── Charger un GLTF/GLB depuis URL ─── */
+function _chargerGLTF(url) {
+  return new Promise((resolve, reject) => {
+    if (!window.THREE || !THREE.GLTFLoader) { reject(new Error('GLTFLoader absent')); return; }
+    const loader = new THREE.GLTFLoader();
+    loader.load(url, resolve, undefined, reject);
+  });
+}
 
 /* ─── Normaliser la taille d'un modèle chargé ─── */
 function _normaliserModele(obj, targetSize) {
@@ -6570,7 +6487,7 @@ function fermerScene3D() {
   const canvas  = document.getElementById('scene3d-canvas');
   const overlay = document.getElementById('scene3d-overlay');
   if (canvas) { const ctx = canvas.getContext('2d'); if(ctx) ctx.clearRect(0,0,canvas.width,canvas.height); }
-  if (overlay) { overlay.style.pointerEvents = 'none'; overlay.classList.remove('active'); }
+  if (overlay) overlay.style.pointerEvents = 'none';
 
   const badge = document.getElementById('scene3d-badge');
   if (badge) { badge.classList.remove('visible'); badge.innerHTML = '🏗️ Vue 3D active'; }
